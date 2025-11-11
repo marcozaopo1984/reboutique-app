@@ -10,15 +10,14 @@ import { FirebaseService } from './firebase.service';
     {
       provide: 'FIREBASE_ADMIN',
       useFactory: () => {
-        // Path assoluto al file JSON, partendo dalla root del progetto
-        const serviceAccountPath = join(
-          process.cwd(), // C:\Users\zaopo\development\gestionale-backend
+        const serviceAccount = require(join(
+          process.cwd(),
           'firebase-service-account.json',
-        );
+        ));
 
         if (!admin.apps.length) {
           admin.initializeApp({
-            credential: admin.credential.cert(serviceAccountPath),
+            credential: admin.credential.cert(serviceAccount),
           });
         }
 
@@ -29,5 +28,3 @@ import { FirebaseService } from './firebase.service';
   exports: ['FIREBASE_ADMIN', FirebaseService],
 })
 export class FirebaseModule {}
-
-
