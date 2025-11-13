@@ -1,30 +1,9 @@
-import { Global, Module } from '@nestjs/common';
-import * as admin from 'firebase-admin';
-import { join } from 'path';
+import { Module } from '@nestjs/common';
 import { FirebaseService } from './firebase.service';
+import { FirebaseAdminProvider } from './firebase-admin.provider';
 
-@Global()
 @Module({
-  providers: [
-    FirebaseService,
-    {
-      provide: 'FIREBASE_ADMIN',
-      useFactory: () => {
-        const serviceAccount = require(join(
-          process.cwd(),
-          'firebase-service-account.json',
-        ));
-
-        if (!admin.apps.length) {
-          admin.initializeApp({
-            credential: admin.credential.cert(serviceAccount),
-          });
-        }
-
-        return admin;
-      },
-    },
-  ],
-  exports: ['FIREBASE_ADMIN', FirebaseService],
+  providers: [FirebaseAdminProvider, FirebaseService],
+  exports: [FirebaseService],
 })
 export class FirebaseModule {}

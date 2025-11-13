@@ -1,90 +1,102 @@
+// --- in testa al file ---
+import * as admin from 'firebase-admin';
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { FirebaseService } from '../firebase/firebase.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
-import { FirebaseService } from './../firebase/firebase.service';
-
-export interface Tenant {
-  id: string;
-  firstName: string;
-  lastName: string;
-  email?: string;
-  phone?: string;
-}
+import { CreateTenantFileDto } from './dto/create-tenant-file.dto';
 
 @Injectable()
 export class TenantsService {
-  private readonly collectionName = 'tenants';
-
+  private collectionName = 'tenants';
   constructor(private readonly firebaseService: FirebaseService) {}
 
-  private get collection() {
+  private get tenants() {
     return this.firebaseService.firestore.collection(this.collectionName);
   }
 
-  async create(createTenantDto: CreateTenantDto): Promise<Tenant> {
-    // Crea un nuovo documento in Firestore con i dati del DTO
-    const docRef = await this.collection.add({
-      ...createTenantDto,
-    });
 
-    const doc = await docRef.get();
-    return {
-      id: doc.id,
-      ...(doc.data() as Omit<Tenant, 'id'>),
-    };
+  private filesCollection(tenantId: string) {
+
+    return this.tenants.doc(tenantId).collection('files');
   }
 
-  async findAll(): Promise<Tenant[]> {
-    const snapshot = await this.collection.get();
-    return snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...(doc.data() as Omit<Tenant, 'id'>),
-    }));
-  }
+  async addFile(tenantId: string, dto: CreateTenantFileDto) {
 
-  async findOne(id: string): Promise<Tenant> {
-    const doc = await this.collection.doc(id).get();
-    if (!doc.exists) {
-      throw new NotFoundException(`Tenant with id ${id} not found`);
+    const tenantDoc = await this.tenants.doc(tenantId).get();
+    if (!tenantDoc.exists) {
+      throw new NotFoundException(`Tenant ${tenantId} not found`);
     }
 
-    return {
-      id: doc.id,
-      ...(doc.data() as Omit<Tenant, 'id'>),
-    };
+    const data = { ...dto, uploadedAt: new Date() };
+
+    console.log('[addFile] write to: tenants/%s/files  storagePath=%s  fileName=%s',
+      tenantId, dto.storagePath, dto.fileName);
+
+
+    const ref = await this.filesCollection(tenantId).add(data);
+    const snap = await ref.get();
+    return { id: snap.id, ...(snap.data() as any) };
   }
 
-  async update(id: string, updateTenantDto: UpdateTenantDto): Promise<Tenant> {
-    const docRef = this.collection.doc(id);
-    const doc = await docRef.get();
+  async listFiles(tenantId: string) {
+    console.log('[listFiles] read: tenants/%s/files', tenantId);
+    const snap = await this.filesCollection(tenantId).get();
+    console.log('[listFiles] count=%d', snap.size);
+    return snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+  }
 
-    if (!doc.exists) {
-      throw new NotFoundException(`Tenant with id ${id} not found`);
-    }
-
-    // Usiamo set(..., { merge: true }) per fare un "partial update"
-    await docRef.set(
-      {
-        ...updateTenantDto,
-      },
-      { merge: true },
+  async removeFile(tenantId: string, fileId: string): Promise<void> {
+    console.log('[removeFile] tenants/%s/files/%s', tenantId, fileId);
+    const ref = this.filesCollection(tenantId).doc(fileId);
+    const snap = await ref.get();
+    if (!snap.exists) throw new NotFoundException(
+      `File with id ${fileId} for tenant ${tenantId} not found`
     );
 
-    const updated = await docRef.get();
-    return {
-      id: updated.id,
-      ...(updated.data() as Omit<Tenant, 'id'>),
-    };
+    const storagePath = (snap.data() as any)?.storagePath;
+    if (storagePath) {
+      try { await admin.storage().bucket().file(storagePath).delete(); } catch {}
+    }
+    await ref.delete();
   }
 
-  async remove(id: string): Promise<void> {
-    const docRef = this.collection.doc(id);
-    const doc = await docRef.get();
+ 
+  async create(dto: CreateTenantDto) {
+    const data = { ...dto};
+    const ref = await this.tenants.add(data);
+    const doc = await ref.get();
+    return { id: doc.id, ...(doc.data() as any) };
+  }
 
-    if (!doc.exists) {
-      throw new NotFoundException(`Tenant with id ${id} not found`);
-    }
+  async findAll() {
+    const snap = await this.tenants.get();
+    return snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+  }
 
-    await docRef.delete();
+  async findOne(id: string) {
+    const doc = await this.tenants.doc(id).get();
+    if (!doc.exists) throw new NotFoundException(`Tenant ${id} not found`);
+    return { id: doc.id, ...(doc.data() as any) };
+  }
+
+  async update(id: string, dto: UpdateTenantDto) {
+    const ref = this.tenants.doc(id);
+    const doc = await ref.get();
+    if (!doc.exists) throw new NotFoundException(`Tenant ${id} not found`);
+
+    const updateData = Object.fromEntries(
+      Object.entries(dto).filter(([, v]) => v !== undefined)
+    );
+    await ref.set(updateData as FirebaseFirestore.DocumentData, { merge: true });
+    const upd = await ref.get();
+    return { id: upd.id, ...(upd.data() as any) };
+  }
+
+  async remove(id: string) {
+    const ref = this.tenants.doc(id);
+    const doc = await ref.get();
+    if (!doc.exists) throw new NotFoundException(`Tenant ${id} not found`);
+    await ref.delete();
   }
 }
