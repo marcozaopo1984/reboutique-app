@@ -15,7 +15,7 @@ export async function fetchWithAuth(
   const token = await user.getIdToken();
 
   const url = `${BASE_URL}${path}`;
-  console.log('Chiamo il backend su:', url);   // <--- LOG DI CONTROLLO
+  console.log('Chiamo il backend su:', url);
 
   const res = await fetch(url, {
     ...options,
@@ -26,10 +26,32 @@ export async function fetchWithAuth(
     },
   });
 
+  //  Se non è ok, costruisco un messaggio di errore senza dare per scontato il JSON
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Request failed: ${res.status} - ${text}`);
+    let message = `Request failed: ${res.status}`;
+    try {
+      const text = await res.text();
+      if (text) {
+        message += ` - ${text}`;
+      }
+    } catch {
+      // nessun body, lascio solo lo status
+    }
+    throw new Error(message);
   }
 
-  return res.json();
+  // DELETE / 204 / risposte senza body: NON chiamo res.json()
+  if (
+    res.status === 204 ||
+    res.headers.get('content-length') === '0'
+  ) {
+    return null;
+  }
+
+  // provo a fare il parse JSON; se non è JSON valido, torno null
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
 }
