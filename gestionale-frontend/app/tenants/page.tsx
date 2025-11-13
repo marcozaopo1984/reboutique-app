@@ -162,20 +162,16 @@ export default function TenantsPage() {
 };
 
 
-  const deleteFile = async (tenantId: string, fileId: string) => {
-    setFileError(null);
-    try {
-      await fetchWithAuth(`/tenants/${tenantId}/files/${fileId}`, {
-        method: 'DELETE',
-      });
-      setFiles((prev) => {
-        const list = prev[tenantId] ?? [];
-        return { ...prev, [tenantId]: list.filter((x) => x.id !== fileId) };
-      });
-    } catch (err: any) {
-      setFileError(err.message ?? 'Errore durante la cancellazione del metadato');
-    }
-  };
+const deleteFile = async (tenantId: string, fileId: string) => {
+  try {
+    await fetchWithAuth(`/tenants/${tenantId}/files/${fileId}`, {
+      method: 'DELETE',
+    });
+    await loadFiles(tenantId);   // ricarica la lista dopo la cancellazione
+  } catch (err: any) {
+    setFileError(err.message ?? 'Errore durante delete');
+  }
+};
 
   if (loading) return <div className="p-4">Loading tenants...</div>;
   if (error)   return <div className="p-4 text-red-500">Error: {error}</div>;
