@@ -140,7 +140,7 @@ async removeFile(holderId: string, tenantId: string, fileId: string) {
 
   const data = doc.data() as any;
 
-  // 👇 QUI prendiamo il campo giusto dal documento
+ 
   let storagePath: string | undefined =
     data?.storagePath ?? data?.path; // fallback su "path" se in futuro cambi nome
   const fileName: string | undefined = data?.fileName;

@@ -1,22 +1,28 @@
-import { IsBoolean, IsNumber, IsOptional, IsString } from 'class-validator';
-
+// src/properties/dto/create-property.dto.ts
 export class CreatePropertyDto {
-  @IsString()
-  title: string;
+  code: string;
+  name: string;
+  address?: string;
 
-  @IsString()
-  description: string;
+  type: 'APARTMENT' | 'ROOM' | 'BED';
+  apartment?: string;
+  room?: string;
 
-  @IsString()
-  city: string;
+  beds?: number;
+  roomSizeM2?: number;
 
-  @IsNumber()
-  price: number;
+  hasBalcony?: boolean;
+  hasDryer?: boolean;
+  hasAC?: boolean;
+  hasHeating?: boolean;
 
-  @IsString()
-  operationType: 'RENT' | 'SALE';
+  baseMonthlyRent?: number;
+  monthlyUtilities?: number;
+  depositMonths?: number;
 
-  @IsOptional()
-  @IsBoolean()
+  websiteUrl?: string;
+  airbnbUrl?: string;
+  spotahomeUrl?: string;
+
   isPublished?: boolean;
 }

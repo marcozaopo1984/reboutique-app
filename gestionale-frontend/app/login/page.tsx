@@ -41,7 +41,7 @@ export default function LoginPage() {
     try {
       const me = (await fetchWithAuth('/auth/me')) as MeResponse;
       if (me.role === 'HOLDER') {
-        router.push('/tenants');           // dashboard gestionale
+        router.push('/dashboard');           // dashboard gestionale
       } else {
         router.push('/search-properties'); // tenant: motore di ricerca
       }

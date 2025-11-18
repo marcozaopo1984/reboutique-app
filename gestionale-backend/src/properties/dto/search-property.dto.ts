@@ -16,4 +16,6 @@ export class SearchPropertiesDto {
   @IsOptional()
   @IsString()
   operationType?: 'RENT' | 'SALE';
+
+  query?: string; // per match su indirizzo/nome
 }
