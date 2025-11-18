@@ -9,9 +9,9 @@ export class CreateTenantDto {
 
   @IsOptional()
   @IsEmail()
-  email: string;
+  email?: string;
 
   @IsOptional()
   @IsString()
-  phone: string;
+  phone?: string;
 }

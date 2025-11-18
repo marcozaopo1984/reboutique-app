@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { auth } from '../../lib/firebaseClient';
 import {
   signInWithEmailAndPassword,
@@ -9,15 +9,24 @@ import {
   User,
   signInWithPopup,
   GoogleAuthProvider,
+  createUserWithEmailAndPassword,
 } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { fetchWithAuth } from '@/lib/apiClient';
+
+type MeResponse = {
+  uid: string;
+  email?: string;
+  role: 'HOLDER' | 'TENANT';
+  holderId?: string;
+};
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [user, setUser] = useState<User | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<'login' | 'register'>('login'); // 👈 login vs registrazione tenant
   const router = useRouter();
 
   useEffect(() => {
@@ -27,14 +36,37 @@ export default function LoginPage() {
     return () => unsub();
   }, []);
 
-  const handleLogin = async (e: FormEvent) => {
+  // Chiama il backend per sapere chi sono (HOLDER o TENANT) e fa redirect
+  const goToDashboardByRole = async () => {
+    try {
+      const me = (await fetchWithAuth('/auth/me')) as MeResponse;
+      if (me.role === 'HOLDER') {
+        router.push('/tenants');           // dashboard gestionale
+      } else {
+        router.push('/search-properties'); // tenant: motore di ricerca
+      }
+    } catch (err: any) {
+      console.error('Error fetching /auth/me', err);
+      setError(err.message ?? 'Errore nel recupero del profilo utente');
+    }
+  };
+
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      router.push('/tenants'); // dopo login vai a tenants
+      if (mode === 'login') {
+        // LOGIN email/password
+        await signInWithEmailAndPassword(auth, email, password);
+      } else {
+        // REGISTRAZIONE TENANT email/password
+        // Il guard sul backend creerà users/{uid} con role: 'TENANT'
+        await createUserWithEmailAndPassword(auth, email, password);
+      }
+
+      await goToDashboardByRole();
     } catch (err: any) {
-      setError(err.message ?? 'Login error');
+      setError(err.message ?? 'Login/registrazione error');
     }
   };
 
@@ -43,7 +75,8 @@ export default function LoginPage() {
     try {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
-      router.push('/tenants');
+      // Utente nuovo → TENANT; utente esistente → ruolo da Firestore
+      await goToDashboardByRole();
     } catch (err: any) {
       setError(err.message ?? 'Google login error');
     }
@@ -51,6 +84,7 @@ export default function LoginPage() {
 
   const handleLogout = async () => {
     await signOut(auth);
+    setUser(null);
   };
 
   return (
@@ -66,10 +100,10 @@ export default function LoginPage() {
               Logged in as <strong>{user.email ?? user.uid}</strong>
             </p>
             <button
-              onClick={() => router.push('/tenants')}
+              onClick={goToDashboardByRole}
               className="w-full border rounded-md py-2"
             >
-              Go to tenants
+              Go to dashboard
             </button>
             <button
               onClick={handleLogout}
@@ -80,7 +114,33 @@ export default function LoginPage() {
           </div>
         ) : (
           <>
-            <form onSubmit={handleLogin} className="space-y-4 mb-4">
+            {/* Toggle login / registrazione tenant */}
+            <div className="flex mb-4 border rounded-md overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setMode('login')}
+                className={`flex-1 py-2 text-sm ${
+                  mode === 'login'
+                    ? 'bg-slate-200 font-semibold'
+                    : 'bg-white'
+                }`}
+              >
+                Login (holder o tenant)
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode('register')}
+                className={`flex-1 py-2 text-sm ${
+                  mode === 'register'
+                    ? 'bg-slate-200 font-semibold'
+                    : 'bg-white'
+                }`}
+              >
+                Registrati come tenant
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4 mb-4">
               <input
                 type="email"
                 placeholder="Email"
@@ -95,14 +155,14 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
-              {error && (
-                <p className="text-red-500 text-sm">{error}</p>
-              )}
+              {error && <p className="text-red-500 text-sm">{error}</p>}
               <button
                 type="submit"
                 className="w-full border rounded-md py-2"
               >
-                Login with email
+                {mode === 'login'
+                  ? 'Login with email'
+                  : 'Register as tenant with email'}
               </button>
             </form>
 
@@ -110,7 +170,7 @@ export default function LoginPage() {
               onClick={handleGoogleLogin}
               className="w-full border rounded-md py-2"
             >
-              Login with Google
+              Continue with Google
             </button>
           </>
         )}
