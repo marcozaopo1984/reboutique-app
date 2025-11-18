@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, FormEvent, useRef } from 'react';
+import React, { useEffect, useState, FormEvent, useRef } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, storage } from '../../lib/firebaseClient';
 import { fetchWithAuth } from '../../lib/apiClient';
@@ -30,6 +30,7 @@ export default function TenantsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [holderId, setHolderId] = useState<string | null>(null); 
   const router = useRouter();
 
   // form create tenant
@@ -57,6 +58,7 @@ export default function TenantsPage() {
         return;
       }
       setUserEmail(user.email ?? user.uid);
+      setHolderId(user.uid);
       try {
         const data = await fetchWithAuth('/tenants');
         setTenants(data);
@@ -128,9 +130,12 @@ export default function TenantsPage() {
     return;
   }
   setUploading((p) => ({ ...p, [tenantId]: true }));
+  if (!holderId) {
+  setFileError('Holder non inizialized reload page and retry)');
+  return;}
   try {
     const safeName = f.name.replace(/\s+/g, '_');
-    const storagePath = `tenants/${tenantId}/files/${safeName}`;
+    const storagePath = `holders/${holderId}/tenants/${tenantId}/files/${safeName}`;
     const storageRef = ref(storage, storagePath);
     await uploadBytes(storageRef, f);
     const downloadUrl = await getDownloadURL(storageRef);

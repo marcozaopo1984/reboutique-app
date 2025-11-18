@@ -1,3 +1,4 @@
+// src/tenants/tenants.controller.ts
 import {
   Controller,
   Get,
@@ -7,63 +8,95 @@ import {
   Patch,
   Delete,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import { TenantsService } from './tenants.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { FirebaseAuthGuard } from '../auth/firebase-auth.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
 import { CreateTenantFileDto } from './dto/create-tenant-file.dto';
 
+
 @Controller('tenants')
-@UseGuards(FirebaseAuthGuard)
+@UseGuards(FirebaseAuthGuard, RolesGuard)   // 👈 PRIMA auth, POI ruoli
 export class TenantsController {
   constructor(private readonly tenantsService: TenantsService) {}
 
   @Post()
-  create(@Body() createTenantDto: CreateTenantDto) {
-    return this.tenantsService.create(createTenantDto);
+  @Roles('HOLDER')
+  create(@Req() req, @Body() dto: CreateTenantDto) {
+    const user = req.user as { uid: string; holderId?: string };
+    const holderId = user.holderId ?? user.uid;
+    return this.tenantsService.create(holderId, dto);
   }
 
   @Get()
-  findAll() {
-    return this.tenantsService.findAll();
+  @Roles('HOLDER')
+  findAll(@Req() req) {
+    const user = req.user as { uid: string; holderId?: string };
+    const holderId = user.holderId ?? user.uid;
+    return this.tenantsService.findAll(holderId);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.tenantsService.findOne(id);
+  @Roles('HOLDER')
+  findOne(@Req() req, @Param('id') id: string) {
+    const user = req.user as { uid: string; holderId?: string };
+    const holderId = user.holderId ?? user.uid;
+    return this.tenantsService.findOne(holderId, id);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateTenantDto: UpdateTenantDto) {
-    return this.tenantsService.update(id, updateTenantDto);
+  @Roles('HOLDER')
+  update(
+    @Req() req,
+    @Param('id') id: string,
+    @Body() dto: UpdateTenantDto,
+  ) {
+    const user = req.user as { uid: string; holderId?: string };
+    const holderId = user.holderId ?? user.uid;
+    return this.tenantsService.update(holderId, id, dto);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.tenantsService.remove(id);
+  @Roles('HOLDER')
+  remove(@Req() req, @Param('id') id: string) {
+    const user = req.user as { uid: string; holderId?: string };
+    const holderId = user.holderId ?? user.uid;
+    return this.tenantsService.remove(holderId, id);
   }
-
-  // -------- FILES endpoints --------
-
+  
   @Post(':id/files')
+  @Roles('HOLDER')
   addFile(
+    @Req() req,
     @Param('id') tenantId: string,
-    @Body() createFileDto: CreateTenantFileDto,
+    @Body() dto: CreateTenantFileDto,
   ) {
-    return this.tenantsService.addFile(tenantId, createFileDto);
+    const user = req.user as { uid: string; holderId?: string };
+    const holderId = user.holderId ?? user.uid;
+    return this.tenantsService.addFile(holderId, tenantId, dto);
   }
 
   @Get(':id/files')
-  listFiles(@Param('id') tenantId: string) {
-    return this.tenantsService.listFiles(tenantId);
+  @Roles('HOLDER')
+  listFiles(@Req() req, @Param('id') tenantId: string) {
+    const user = req.user as { uid: string; holderId?: string };
+    const holderId = user.holderId ?? user.uid;
+    return this.tenantsService.listFiles(holderId, tenantId);
   }
 
-  @Delete(':id/files/:fileId')
+  @Delete(':tenantId/files/:fileId')
+  @Roles('HOLDER')
   removeFile(
-    @Param('id') tenantId: string,
+    @Req() req,
+    @Param('tenantId') tenantId: string,
     @Param('fileId') fileId: string,
   ) {
-    return this.tenantsService.removeFile(tenantId, fileId);
+    const user = req.user as { uid: string; holderId?: string };
+    const holderId = user.holderId ?? user.uid;
+    return this.tenantsService.removeFile(holderId, tenantId, fileId);
   }
 }
