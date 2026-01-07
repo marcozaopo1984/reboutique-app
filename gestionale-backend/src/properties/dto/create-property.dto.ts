@@ -4,7 +4,7 @@ export class CreatePropertyDto {
   name: string;
   address?: string;
 
-  type: 'APARTMENT' | 'ROOM' | 'BED';
+  type: 'BUILDING' |'APARTMENT' | 'ROOM' | 'BED';
   apartment?: string;
   room?: string;
 
@@ -19,6 +19,10 @@ export class CreatePropertyDto {
   baseMonthlyRent?: number;
   monthlyUtilities?: number;
   depositMonths?: number;
+
+  buildingId?: string;  
+  floor?: string;       
+  unitNumber?: string;  
 
   websiteUrl?: string;
   airbnbUrl?: string;

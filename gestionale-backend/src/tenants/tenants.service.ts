@@ -42,6 +42,7 @@ export class TenantsService {
     const rawData = {
       ...dto,
       holderId,
+      status: dto.status ?? 'CURRENT',
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -142,7 +143,7 @@ async removeFile(holderId: string, tenantId: string, fileId: string) {
 
  
   let storagePath: string | undefined =
-    data?.storagePath ?? data?.path; // fallback su "path" se in futuro cambi nome
+    data?.storagePath ?? data?.path; // fallback su "path" se in futuro cambia nome
   const fileName: string | undefined = data?.fileName;
 
   console.log('removeFile - raw data from Firestore:', data);

@@ -1,19 +1,28 @@
 import { IsEmail, IsOptional, IsString } from 'class-validator';
 
+// src/tenants/dto/update-tenant.dto.ts
 export class UpdateTenantDto {
-  @IsOptional()
-  @IsString()
+
   firstName?: string;
-
-  @IsOptional()
-  @IsString()
+  
   lastName?: string;
-
-  @IsOptional()
-  @IsEmail()
+  
   email?: string;
-
-  @IsOptional()
-  @IsString()
+  
   phone?: string;
+
+  birthday?: string;
+  nationality?: string;
+  euCitizen?: boolean;
+  gender?: 'M' | 'F' | 'OTHER';
+
+  address?: string;
+  taxCode?: string;
+  documentType?: string;
+  documentNumber?: string;
+
+  school?: string;
+  notes?: string;
+
+  status?: 'CURRENT' | 'INCOMING' | 'PAST' | 'PENDING';
 }

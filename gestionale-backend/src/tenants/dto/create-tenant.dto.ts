@@ -1,17 +1,29 @@
-import { IsEmail, IsOptional, IsString } from 'class-validator';
-
+// src/tenants/dto/create-tenant.dto.ts
 export class CreateTenantDto {
-  @IsString()
+  // Anagrafica base
   firstName: string;
-
-  @IsString()
   lastName: string;
 
-  @IsOptional()
-  @IsEmail()
+  // Contatti
   email?: string;
-
-  @IsOptional()
-  @IsString()
   phone?: string;
+
+  // Dati personali
+  birthday?: string;          // ISO string "YYYY-MM-DD"
+  nationality?: string;
+  euCitizen?: boolean;
+  gender?: 'M' | 'F' | 'OTHER';
+
+  // Dati fiscali / documento
+  address?: string;
+  taxCode?: string;           // codice fiscale
+  documentType?: string;      // es. "ID", "Passaport"
+  documentNumber?: string;
+
+  // Altro
+  school?: string;            // IED, NABA, ecc.
+  notes?: string;
+
+  // Stato tenant rispetto al gestionale
+  status?: 'CURRENT' | 'INCOMING' | 'PAST' | 'PENDING';
 }

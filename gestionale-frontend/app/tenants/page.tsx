@@ -1,329 +1,331 @@
 'use client';
 
-import React, { useEffect, useState, FormEvent, useRef } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
-import { auth, storage } from '../../lib/firebaseClient';
-import { fetchWithAuth } from '../../lib/apiClient';
-import { useRouter } from 'next/navigation';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { useEffect, useState, FormEvent } from 'react';
+import { fetchWithAuth } from '@/lib/apiClient';
 
-interface Tenant {
+type TenantStatus = 'CURRENT' | 'INCOMING' | 'PAST' | 'PENDING';
+
+type Tenant = {
   id: string;
   firstName: string;
   lastName: string;
   email?: string;
   phone?: string;
-}
-
-interface TenantFile {
-  id: string;
-  fileName: string;
-  storagePath: string;
-  downloadUrl?: string;
-  mimeType?: string;
-  sizeBytes?: number;
-  uploadedAt?: string;
-}
+  birthday?: string;
+  nationality?: string;
+  euCitizen?: boolean;
+  gender?: 'M' | 'F' | 'OTHER';
+  address?: string;
+  taxCode?: string;
+  documentType?: string;
+  documentNumber?: string;
+  school?: string;
+  notes?: string;
+  status?: TenantStatus;
+};
 
 export default function TenantsPage() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [holderId, setHolderId] = useState<string | null>(null); 
-  const router = useRouter();
 
-  // form create tenant
+  // form state
   const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName]   = useState('');
-  const [email, setEmail]         = useState('');
-  const [phone, setPhone]         = useState('');
-  const [saving, setSaving]       = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
+  const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [birthday, setBirthday] = useState('');
+  const [nationality, setNationality] = useState('');
+  const [euCitizen, setEuCitizen] = useState<boolean | null>(null);
+  const [gender, setGender] = useState<'M' | 'F' | 'OTHER' | ''>('');
+  const [school, setSchool] = useState('');
+  const [status, setStatus] = useState<TenantStatus>('CURRENT');
+  const [notes, setNotes] = useState('');
 
-  // files state per-tenant
-  const [fileInputs, setFileInputs] = useState<Record<string, File | null>>({});
-  const [uploading, setUploading]   = useState<Record<string, boolean>>({});
-  const [files, setFiles]           = useState<Record<string, TenantFile[]>>({});
-  const [loadingFiles, setLoadingFiles] = useState<Record<string, boolean>>({});
-  const [fileError, setFileError]   = useState<string | null>(null);
-
-  // ref agli input file per-tenant (per aprire il picker con un bottone)
-  const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const loadTenants = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = (await fetchWithAuth('/tenants')) as Tenant[];
+      setTenants(data);
+    } catch (err: any) {
+      setError(err.message ?? 'Errore nel caricamento inquilini');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      if (!user) {
-        router.push('/login');
-        return;
-      }
-      setUserEmail(user.email ?? user.uid);
-      setHolderId(user.uid);
-      try {
-        const data = await fetchWithAuth('/tenants');
-        setTenants(data);
-        setLoading(false);
-      } catch (err: any) {
-        setError(err.message ?? 'Error fetching tenants');
-        setLoading(false);
-      }
-    });
-    return () => unsub();
-  }, [router]);
+    loadTenants();
+  }, []);
 
-  const handleCreateTenant = async (e: FormEvent) => {
+  const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
-    setFormError(null);
+    setError(null);
 
-    if (!firstName.trim() || !lastName.trim()) {
-      setFormError('First name e Last name sono obbligatori');
-      return;
-    }
-
-    setSaving(true);
     try {
-      const body = {
-        firstName: firstName.trim(),
-        lastName : lastName.trim(),
-        email    : email.trim() || undefined,
-        phone    : phone.trim() || undefined,
+      const body: any = {
+        firstName,
+        lastName,
+        email: email || undefined,
+        phone: phone || undefined,
+        birthday: birthday || undefined,
+        nationality: nationality || undefined,
+        school: school || undefined,
+        status,
+        notes: notes || undefined,
       };
-      const created: Tenant = await fetchWithAuth('/tenants', {
+
+      if (euCitizen !== null) {
+        body.euCitizen = euCitizen;
+      }
+      if (gender) {
+        body.gender = gender;
+      }
+
+      await fetchWithAuth('/tenants', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      setTenants((prev) => [...prev, created]);
-      setFirstName(''); setLastName(''); setEmail(''); setPhone('');
+
+      // reset form
+      setFirstName('');
+      setLastName('');
+      setEmail('');
+      setPhone('');
+      setBirthday('');
+      setNationality('');
+      setSchool('');
+      setStatus('CURRENT');
+      setEuCitizen(null);
+      setGender('');
+      setNotes('');
+
+      await loadTenants();
     } catch (err: any) {
-      setFormError(err.message ?? 'Errore durante il salvataggio');
-    } finally {
-      setSaving(false);
+      setError(err.message ?? 'Errore nella creazione tenant');
     }
   };
 
-  // ------- FILES -------
-
-  const onFileChange = (tenantId: string, f: File | null) => {
-    setFileInputs((prev) => ({ ...prev, [tenantId]: f }));
+  const handleDelete = async (id: string) => {
+    setError(null);
+    try {
+      await fetchWithAuth(`/tenants/${id}`, {
+        method: 'DELETE',
+      });
+      await loadTenants();
+    } catch (err: any) {
+      setError(err.message ?? 'Errore nella cancellazione tenant');
+    }
   };
 
-  const loadFiles = async (tenantId: string) => {
-  setLoadingFiles((p) => ({ ...p, [tenantId]: true }));
-  try {
-    const list: TenantFile[] = await fetchWithAuth(`/tenants/${tenantId}/files`);
-    console.log('GET files for', tenantId, list);
-    setFiles((prev) => ({ ...prev, [tenantId]: list }));
-  } catch (err: any) {
-    setFileError(err.message ?? 'Errore caricamento lista file');
-    // 🔎 NON sovrascrivere la lista con [] in caso di errore
-  } finally {
-    setLoadingFiles((p) => ({ ...p, [tenantId]: false }));
-  }
-};
-
-
- const uploadForTenant = async (tenantId: string) => {
-  setFileError(null);
-  const f = fileInputs[tenantId];
-  if (!f) {
-    setFileError('Seleziona un file prima di caricare');
-    return;
-  }
-  setUploading((p) => ({ ...p, [tenantId]: true }));
-  if (!holderId) {
-  setFileError('Holder non inizialized reload page and retry)');
-  return;}
-  try {
-    const safeName = f.name.replace(/\s+/g, '_');
-    const storagePath = `holders/${holderId}/tenants/${tenantId}/files/${safeName}`;
-    const storageRef = ref(storage, storagePath);
-    await uploadBytes(storageRef, f);
-    const downloadUrl = await getDownloadURL(storageRef);
-
-    const meta = {
-      fileName: safeName,
-      storagePath,
-      downloadUrl,
-      mimeType: f.type || 'application/octet-stream',
-      sizeBytes: f.size,
-    };
-
-    const created: TenantFile = await fetchWithAuth(`/tenants/${tenantId}/files`, {
-      method: 'POST',
-      body: JSON.stringify(meta),
-    });
-    console.log('Created meta', created);
-
-    
-    await loadFiles(tenantId);
-
-    // pulisci input
-    setFileInputs((prev) => ({ ...prev, [tenantId]: null }));
-  } catch (err: any) {
-    setFileError(err.message ?? 'Errore durante upload/metadati');
-  } finally {
-    setUploading((p) => ({ ...p, [tenantId]: false }));
-  }
-};
-
-
-const deleteFile = async (tenantId: string, fileId: string) => {
-  try {
-    await fetchWithAuth(`/tenants/${tenantId}/files/${fileId}`, {
-      method: 'DELETE',
-    });
-    await loadFiles(tenantId);   // ricarica la lista dopo la cancellazione
-  } catch (err: any) {
-    setFileError(err.message ?? 'Errore durante delete');
-  }
-};
-
-  if (loading) return <div className="p-4">Loading tenants...</div>;
-  if (error)   return <div className="p-4 text-red-500">Error: {error}</div>;
-
   return (
-    <div className="p-4 max-w-5xl mx-auto space-y-6">
-      <p className="text-sm">
-        Logged as: <strong>{userEmail}</strong>
-      </p>
-      <h1 className="text-2xl font-semibold">Tenants</h1>
+    <div className="min-h-screen bg-slate-100">
+      <div className="max-w-6xl mx-auto py-8 px-4 space-y-6">
+        <header className="flex flex-col gap-2 mb-4">
+          <h1 className="text-2xl font-semibold">
+            Inquilini – Reboutique (Holder)
+          </h1>
+          <p className="text-sm text-slate-600">
+            Gestisci gli inquilini (current, incoming, past, pending).
+          </p>
+        </header>
 
-      {/* FORM CREAZIONE TENANT */}
-      <div className="border rounded-md p-4 bg-slate-50">
-        <h2 className="text-lg font-semibold mb-3">Add new tenant</h2>
-        <form onSubmit={handleCreateTenant} className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <div>
-            <label className="block text-sm mb-1">First name *</label>
-            <input className="w-full border rounded-md px-2 py-1 text-sm"
-              value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-sm mb-1">Last name *</label>
-            <input className="w-full border rounded-md px-2 py-1 text-sm"
-              value={lastName} onChange={(e) => setLastName(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-sm mb-1">Email</label>
-            <input type="email" className="w-full border rounded-md px-2 py-1 text-sm"
-              value={email} onChange={(e) => setEmail(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-sm mb-1">Phone</label>
-            <input className="w-full border rounded-md px-2 py-1 text-sm"
-              value={phone} onChange={(e) => setPhone(e.target.value)} />
-          </div>
-          <div className="md:col-span-4 flex justify-end mt-1">
-            <button type="submit" disabled={saving}
-              className="border rounded-md px-4 py-1 text-sm disabled:opacity-60">
-              {saving ? 'Saving...' : 'Save tenant'}
-            </button>
-          </div>
-        </form>
-        {formError && <p className="text-red-500 text-sm mt-2">{formError}</p>}
-      </div>
+        {/* FORM CREAZIONE TENANT */}
+        <section className="bg-white shadow rounded-lg p-4 mb-6">
+          <h2 className="text-lg font-medium mb-3">
+            Crea nuovo inquilino
+          </h2>
+          <form
+            onSubmit={handleCreate}
+            className="grid grid-cols-1 md:grid-cols-3 gap-4"
+          >
+            <input
+              type="text"
+              placeholder="Nome"
+              className="border rounded px-3 py-2"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              required
+            />
+            <input
+              type="text"
+              placeholder="Cognome"
+              className="border rounded px-3 py-2"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              required
+            />
+            <input
+              type="email"
+              placeholder="Email"
+              className="border rounded px-3 py-2"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
 
-      {/* TABELLA TENANTS + UPLOAD */}
-      {tenants.length === 0 ? (
-        <p>No tenants found.</p>
-      ) : (
-        <table className="min-w-full border text-sm">
-          <thead>
-            <tr className="bg-slate-100">
-              <th className="border px-2 py-1 text-left">Name</th>
-              <th className="border px-2 py-1 text-left">Email</th>
-              <th className="border px-2 py-1 text-left">Phone</th>
-              <th className="border px-2 py-1 text-left">Files</th>
-            </tr>
-          </thead>
-          <tbody>
-            {tenants.map((t) => {
-              const isUploading = !!uploading[t.id];
-              const fList = files[t.id] || [];
-              const isLoadingList = !!loadingFiles[t.id];
+            <input
+              type="text"
+              placeholder="Telefono"
+              className="border rounded px-3 py-2"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
+            <div className="flex flex-col">
+              <label className="text-sm mb-1">Data di nascita</label>
+              <input
+                type="date"
+                className="border rounded px-3 py-2"
+                value={birthday}
+                onChange={(e) => setBirthday(e.target.value)}
+              />
+            </div>
+            <input
+              type="text"
+              placeholder="Nazionalità"
+              className="border rounded px-3 py-2"
+              value={nationality}
+              onChange={(e) => setNationality(e.target.value)}
+            />
 
-              return (
-                <tr key={t.id} className="align-top">
-                  <td className="border px-2 py-1">{t.firstName} {t.lastName}</td>
-                  <td className="border px-2 py-1">{t.email ?? '-'}</td>
-                  <td className="border px-2 py-1">{t.phone ?? '-'}</td>
-                  <td className="border px-2 py-1">
-                    {/* Selettore + azioni */}
-                    <div className="flex items-center gap-2 mb-2">
-                      {/* input file nascosto */}
-                      <input
-                        ref={(el) => { inputRefs.current[t.id] = el; }} 
-                        type="file"
-                        accept=".pdf,image/*"
-                        className="hidden"
-                        onChange={(e) => onFileChange(t.id, e.target.files?.[0] ?? null)}
-                      />
+            <div className="flex flex-col">
+              <label className="text-sm mb-1">Cittadino UE</label>
+              <select
+                className="border rounded px-3 py-2"
+                value={euCitizen === null ? '' : euCitizen ? 'yes' : 'no'}
+                onChange={(e) => {
+                  if (e.target.value === '') setEuCitizen(null);
+                  else setEuCitizen(e.target.value === 'yes');
+                }}
+              >
+                <option value="">Non specificato</option>
+                <option value="yes">Sì</option>
+                <option value="no">No</option>
+              </select>
+            </div>
 
-                      {/* SELECT FILE */}
-                      <button
-                        type="button"
-                        onClick={() => inputRefs.current[t.id]?.click()}
-                        className="border rounded-md px-2 py-1 text-xs"
-                      >
-                        Select file
-                      </button>
+            <div className="flex flex-col">
+              <label className="text-sm mb-1">Genere</label>
+              <select
+                className="border rounded px-3 py-2"
+                value={gender}
+                onChange={(e) =>
+                  setGender(e.target.value as 'M' | 'F' | 'OTHER' | '')
+                }
+              >
+                <option value="">Non specificato</option>
+                <option value="M">M</option>
+                <option value="F">F</option>
+                <option value="OTHER">Altro</option>
+              </select>
+            </div>
 
-                      {/* UPLOAD */}
-                      <button
-                        onClick={() => uploadForTenant(t.id)}
-                        disabled={isUploading || !fileInputs[t.id]}
-                        className="border rounded-md px-2 py-1 text-xs disabled:opacity-60"
-                      >
-                        {isUploading ? 'Uploading...' : 'Upload'}
-                      </button>
+            <input
+              type="text"
+              placeholder="Scuola (IED, NABA, ...)"
+              className="border rounded px-3 py-2"
+              value={school}
+              onChange={(e) => setSchool(e.target.value)}
+            />
 
-                      {/* LOAD FILES */}
-                      <button
-                        onClick={() => loadFiles(t.id)}
-                        className="border rounded-md px-2 py-1 text-xs"
-                      >
-                        {isLoadingList ? 'Loading...' : 'Load files'}
-                      </button>
+            <div className="flex flex-col">
+              <label className="text-sm mb-1">Stato</label>
+              <select
+                className="border rounded px-3 py-2"
+                value={status}
+                onChange={(e) =>
+                  setStatus(e.target.value as TenantStatus)
+                }
+              >
+                <option value="CURRENT">Current</option>
+                <option value="INCOMING">Incoming</option>
+                <option value="PAST">Past</option>
+                <option value="PENDING">Pending</option>
+              </select>
+            </div>
+
+            <textarea
+              placeholder="Note"
+              className="border rounded px-3 py-2 md:col-span-3"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+
+            <div className="md:col-span-3">
+              <button
+                type="submit"
+                className="px-4 py-2 rounded bg-slate-800 text-white hover:bg-slate-700"
+              >
+                Salva inquilino
+              </button>
+            </div>
+          </form>
+
+          {error && (
+            <p className="text-red-500 text-sm mt-2">{error}</p>
+          )}
+        </section>
+
+        {/* LISTA TENANTS */}
+        <section className="bg-white shadow rounded-lg p-4">
+          <h2 className="text-lg font-medium mb-3">
+            Lista inquilini
+          </h2>
+
+          {loading ? (
+            <p>Caricamento...</p>
+          ) : tenants.length === 0 ? (
+            <p className="text-sm text-slate-500">
+              Nessun inquilino presente.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {tenants.map((t) => (
+                <div
+                  key={t.id}
+                  className="border rounded-lg p-3 flex flex-col md:flex-row md:items-center md:justify-between"
+                >
+                  <div>
+                    <div className="font-semibold">
+                      {t.firstName} {t.lastName}{' '}
+                      {t.school && (
+                        <span className="text-xs text-slate-500">
+                          · {t.school}
+                        </span>
+                      )}
                     </div>
-
-                    {/* nome del file selezionato */}
-                    {fileInputs[t.id]?.name && (
-                      <p className="text-xs text-slate-600 mb-2">
-                        Selected: <span className="font-medium">{fileInputs[t.id]!.name}</span>
-                      </p>
+                    <div className="text-sm text-slate-600">
+                      {t.email && <span>{t.email}</span>}
+                      {t.email && t.phone && <span> · </span>}
+                      {t.phone && <span>{t.phone}</span>}
+                    </div>
+                    <div className="text-xs text-slate-500 mt-1">
+                      Stato: {t.status ?? 'CURRENT'}{' '}
+                      {t.nationality && `· ${t.nationality}`}{' '}
+                      {typeof t.euCitizen === 'boolean' &&
+                        `· UE: ${t.euCitizen ? 'Sì' : 'No'}`}
+                    </div>
+                    {t.notes && (
+                      <div className="text-xs text-slate-500 mt-1">
+                        Note: {t.notes}
+                      </div>
                     )}
-
-                    {/* Lista file */}
-                    {fList.length > 0 && (
-                      <ul className="list-disc ml-5 space-y-1">
-                        {fList.map((file) => (
-                          <li key={file.id}>
-                            <a
-                              href={file.downloadUrl || '#'}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="underline"
-                            >
-                              {file.fileName}
-                            </a>
-                            <button
-                              onClick={() => deleteFile(t.id, file.id)}
-                              className="ml-2 text-red-600 underline"
-                            >
-                              delete
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
-
-      {fileError && <p className="text-red-500 text-sm">{fileError}</p>}
+                  </div>
+                  <div className="mt-2 md:mt-0">
+                    <button
+                      onClick={() => handleDelete(t.id)}
+                      className="text-sm text-red-600 hover:underline"
+                    >
+                      Elimina
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   );
 }
