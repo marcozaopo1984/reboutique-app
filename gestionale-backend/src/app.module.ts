@@ -8,9 +8,11 @@ import { PropertiesModule } from './properties/properties.module';
 import { LeasesModule } from './leases/leases.module';
 import { PaymentsModule } from './payments/payments.module';
 import { ExpensesModule } from './expenses/expenses.module';
+import { LandlordsModule } from './landlords/landlords.module';
+
 
 @Module({
-  imports: [FirebaseModule, TenantsModule, AuthModule, PropertiesModule, LeasesModule, PaymentsModule, ExpensesModule],
+  imports: [FirebaseModule, TenantsModule, AuthModule, PropertiesModule, LeasesModule, PaymentsModule, ExpensesModule, LandlordsModule],
   controllers: [AppController],
   providers: [AppService],
 })

@@ -1,29 +1,5 @@
-export class UpdateLeaseDto {
-  tenantId?: string;
-  propertyId?: string;
-  buildingId?: string;
+import { PartialType } from '@nestjs/mapped-types';
+import { CreateLeaseDto } from './create-lease.dto';
 
-  startDate?: string;
-  expectedEndDate?: string;
-  actualEndDate?: string;
+export class UpdateLeaseDto extends PartialType(CreateLeaseDto) {}
 
-  monthlyRent?: number;
-  billsIncluded?: boolean;
-
-  depositAmount?: number;
-  depositRefundedAmount?: number;
-  depositReturnDate?: string;
-  depositRefundPercent?: number;
-
-  adminFee?: number;
-  bookingCost?: number;
-  bookingDate?: string;
-
-  paymentDay?: number;
-  nextPaymentDue?: string;
-
-  sourceChannel?: string;
-  hasDuvet?: boolean;
-
-  status?: 'INCOMING' | 'ACTIVE' | 'ENDED';
-}

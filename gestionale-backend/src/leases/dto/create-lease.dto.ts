@@ -1,31 +1,82 @@
+import { IsDateString, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+
+export enum LeaseType {
+  TENANT = 'TENANT',
+  LANDLORD = 'LANDLORD',
+}
+
 export class CreateLeaseDto {
-  tenantId: string;
+  @IsEnum(LeaseType)
+  type: LeaseType;
+
+  // sempre obbligatorio
+  @IsString()
+  @IsNotEmpty()
   propertyId: string;
 
-  // Per compatibilità con building manager:
-  buildingId?: string;    // opzionale
+  // obbligatorio se type=TENANT
+  @IsOptional()
+  @IsString()
+  tenantId?: string;
 
-  startDate: string;       // ISO
-  expectedEndDate: string; // ISO
-  actualEndDate?: string;
+  // obbligatorio se type=LANDLORD (come da tua scelta Excel)
+  @IsOptional()
+  @IsString()
+  landlordId?: string;
 
-  monthlyRent: number;
-  billsIncluded?: boolean;
+  @IsDateString()
+  startDate: string;
 
-  depositAmount?: number;
-  depositRefundedAmount?: number;
-  depositReturnDate?: string;
-  depositRefundPercent?: number;
+  @IsOptional()
+  @IsDateString()
+  endDate?: string;
 
-  adminFee?: number;
-  bookingCost?: number;
-  bookingDate?: string;
-
-  paymentDay?: number;
+  // opzionale: prima scadenza (se la usi da Excel "Next payment due")
+  @IsOptional()
+  @IsDateString()
   nextPaymentDue?: string;
 
-  sourceChannel?: string;    // Found through: Airbnb, Spotahome, etc.
-  hasDuvet?: boolean;
+  // import / extra
+  @IsOptional()
+  @IsString()
+  externalId?: string;
 
-  status?: 'INCOMING' | 'ACTIVE' | 'ENDED';
+  // economics
+  // sempre presente (nel tuo modello: per TENANT è gross-bills; per LANDLORD è l’unico campo)
+  @IsNumber()
+  @Min(0)
+  monthlyRentWithoutBills: number;
+
+  // solo TENANT: opzionale (se vuoi salvarla per reporting)
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  monthlyRentWithBills?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  billsIncludedAmount?: number;
+
+  // one-offs
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  depositAmount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  adminFeeAmount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  otherFeesAmount?: number;
+
+  // regola scadenze mensili (se non usi nextPaymentDue)
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  dueDayOfMonth?: number; // es: 5 => ogni mese giorno 5
 }

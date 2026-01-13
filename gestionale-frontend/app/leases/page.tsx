@@ -1,231 +1,306 @@
 'use client';
 
-import { useEffect, useState, FormEvent } from 'react';
+import { useEffect, useState } from 'react';
 import { fetchWithAuth } from '@/lib/apiClient';
+
+type LeaseType = 'TENANT' | 'LANDLORD';
 
 type Lease = {
   id: string;
-  tenantId: string;
+  type: LeaseType;
   propertyId: string;
-  buildingId?: string;
-
-  startDate: string;
-  expectedEndDate: string;
-  actualEndDate?: string;
-
-  monthlyRent: number;
-  billsIncluded?: boolean;
-
-  status: 'INCOMING' | 'ACTIVE' | 'ENDED';
+  tenantId?: string;
+  landlordId?: string;
+  startDate: any;
+  endDate?: any;
+  nextPaymentDue?: any;
+  monthlyRentWithoutBills: number;
+  monthlyRentWithBills?: number;
+  billsIncludedAmount?: number;
+  depositAmount?: number;
+  adminFeeAmount?: number;
+  otherFeesAmount?: number;
+  dueDayOfMonth?: number;
+  externalId?: string;
 };
 
-type Tenant = { id: string; firstName: string; lastName: string };
-type Property = { id: string; code: string; name: string; type: string; buildingId?: string };
+type CreateLeaseDto = {
+  type: LeaseType;
+  propertyId: string;
+  tenantId?: string;
+  landlordId?: string;
+  startDate: string;
+  endDate?: string;
+  nextPaymentDue?: string;
+  monthlyRentWithoutBills: number;
+  monthlyRentWithBills?: number;
+  billsIncludedAmount?: number;
+  depositAmount?: number;
+  adminFeeAmount?: number;
+  otherFeesAmount?: number;
+  dueDayOfMonth?: number;
+  externalId?: string;
+};
 
 export default function LeasesPage() {
-  const [leases, setLeases] = useState<Lease[]>([]);
-  const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [properties, setProperties] = useState<Property[]>([]);
+  const [items, setItems] = useState<Lease[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // FORM STATE
-  const [tenantId, setTenantId] = useState('');
-  const [propertyId, setPropertyId] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [expectedEndDate, setExpectedEndDate] = useState('');
-  const [monthlyRent, setMonthlyRent] = useState('');
-  const [billsIncluded, setBillsIncluded] = useState(false);
-  const [status, setStatus] = useState<'INCOMING' | 'ACTIVE' | 'ENDED'>('ACTIVE');
+  const [form, setForm] = useState<CreateLeaseDto>({
+    type: 'TENANT',
+    propertyId: '',
+    tenantId: '',
+    landlordId: '',
+    startDate: '',
+    endDate: '',
+    nextPaymentDue: '',
+    monthlyRentWithoutBills: 0,
+    monthlyRentWithBills: undefined,
+    billsIncludedAmount: undefined,
+    depositAmount: undefined,
+    adminFeeAmount: undefined,
+    otherFeesAmount: undefined,
+    dueDayOfMonth: 5,
+    externalId: '',
+  });
 
-  const loadAll = async () => {
+  const load = async () => {
     setLoading(true);
+    setError(null);
     try {
-      const [leasesRes, tenantsRes, propertiesRes] = await Promise.all([
-        fetchWithAuth('/leases'),
-        fetchWithAuth('/tenants'),
-        fetchWithAuth('/properties'),
-      ]);
-
-      setLeases(leasesRes);
-      setTenants(tenantsRes);
-      setProperties(propertiesRes);
-    } catch (err: any) {
-      setError(err.message ?? 'Errore nel caricamento');
+      const data = (await fetchWithAuth('/leases')) as Lease[];
+      setItems(data);
+    } catch (e: any) {
+      setError(e?.message ?? 'Errore caricamento leases');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
-    loadAll();
+    load();
   }, []);
 
-  const handleCreate = async (e: FormEvent) => {
-    e.preventDefault();
-    setError(null);
+  const onChange = (key: keyof CreateLeaseDto, value: any) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  };
 
+  const create = async () => {
+    setError(null);
     try {
-      const prop = properties.find(p => p.id === propertyId);
-      const body = {
-        tenantId,
-        propertyId,
-        buildingId: prop?.buildingId ?? null,
-        startDate,
-        expectedEndDate,
-        monthlyRent: Number(monthlyRent),
-        billsIncluded,
-        status,
+      if (!form.propertyId.trim()) return setError('propertyId obbligatorio');
+      if (!form.startDate.trim()) return setError('startDate obbligatorio (YYYY-MM-DD)');
+      if (form.type === 'TENANT' && !form.tenantId?.trim())
+        return setError('tenantId obbligatorio per TENANT');
+      if (form.type === 'LANDLORD' && !form.landlordId?.trim())
+        return setError('landlordId obbligatorio per LANDLORD');
+
+      const payload: any = {
+        ...form,
+        propertyId: form.propertyId.trim(),
+        tenantId: form.type === 'TENANT' ? form.tenantId?.trim() : undefined,
+        landlordId: form.type === 'LANDLORD' ? form.landlordId?.trim() : undefined,
+        endDate: form.endDate?.trim() || undefined,
+        nextPaymentDue: form.nextPaymentDue?.trim() || undefined,
+        externalId: form.externalId?.trim() || undefined,
+        dueDayOfMonth: form.dueDayOfMonth ?? 5,
       };
 
-      await fetchWithAuth('/leases', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+      // numeric cleanup
+      const toNum = (v: any) => (v === '' || v === null || v === undefined ? undefined : Number(v));
+      payload.monthlyRentWithoutBills = Number(form.monthlyRentWithoutBills);
+      payload.monthlyRentWithBills = toNum(form.monthlyRentWithBills);
+      payload.billsIncludedAmount = toNum(form.billsIncludedAmount);
+      payload.depositAmount = toNum(form.depositAmount);
+      payload.adminFeeAmount = toNum(form.adminFeeAmount);
+      payload.otherFeesAmount = toNum(form.otherFeesAmount);
+      payload.dueDayOfMonth = toNum(form.dueDayOfMonth) ?? 5;
 
-      setTenantId('');
-      setPropertyId('');
-      setStartDate('');
-      setExpectedEndDate('');
-      setMonthlyRent('');
-      setBillsIncluded(false);
-      setStatus('ACTIVE');
+      await fetchWithAuth('/leases', { method: 'POST', body: JSON.stringify(payload) });
 
-      await loadAll();
-    } catch (err: any) {
-      setError(err.message ?? 'Errore creazione contratto');
+      setForm((prev) => ({
+        ...prev,
+        propertyId: '',
+        tenantId: '',
+        landlordId: '',
+        startDate: '',
+        endDate: '',
+        nextPaymentDue: '',
+        externalId: '',
+        monthlyRentWithoutBills: 0,
+      }));
+
+      await load();
+    } catch (e: any) {
+      setError(e?.message ?? 'Errore creazione lease');
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const generate = async (id: string) => {
+    setError(null);
     try {
-      await fetchWithAuth(`/leases/${id}`, { method: 'DELETE' });
-      await loadAll();
-    } catch (err: any) {
-      setError(err.message ?? 'Errore eliminazione contratto');
+      await fetchWithAuth(`/leases/${id}/generate-schedule`, { method: 'POST' });
+      alert('Schedule generated ✅');
+    } catch (e: any) {
+      setError(e?.message ?? 'Errore generate schedule');
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 p-6">
-      <h1 className="text-2xl font-semibold mb-6">Contratti (Leases)</h1>
+    <div className="min-h-screen bg-slate-100">
+      <div className="max-w-5xl mx-auto py-8 px-4 space-y-6">
+        <header className="flex items-center justify-between">
+          <h1 className="text-2xl font-semibold">Leases</h1>
+        </header>
 
-      {/* FORM */}
-      <form onSubmit={handleCreate} className="bg-white shadow p-4 rounded mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-        <select
-          className="border rounded px-3 py-2"
-          value={tenantId}
-          onChange={(e) => setTenantId(e.target.value)}
-          required
-        >
-          <option value="">Seleziona Inquilino</option>
-          {tenants.map(t => (
-            <option key={t.id} value={t.id}>
-              {t.firstName} {t.lastName}
-            </option>
-          ))}
-        </select>
+        {error && <div className="text-red-600 text-sm">{error}</div>}
 
-        <select
-          className="border rounded px-3 py-2"
-          value={propertyId}
-          onChange={(e) => setPropertyId(e.target.value)}
-          required
-        >
-          <option value="">Seleziona Proprietà</option>
-          {properties.map(p => (
-            <option key={p.id} value={p.id}>
-              {p.code} – {p.name}
-            </option>
-          ))}
-        </select>
+        <div className="bg-white rounded-xl shadow p-4 space-y-3">
+          <h2 className="font-medium">Nuovo lease</h2>
 
-        <input
-          type="date"
-          className="border rounded px-3 py-2"
-          value={startDate}
-          onChange={(e) => setStartDate(e.target.value)}
-          required
-        />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <select
+              className="border rounded-md px-3 py-2"
+              value={form.type}
+              onChange={(e) => onChange('type', e.target.value as LeaseType)}
+            >
+              <option value="TENANT">TENANT (incasso)</option>
+              <option value="LANDLORD">LANDLORD (spesa)</option>
+            </select>
 
-        <input
-          type="date"
-          className="border rounded px-3 py-2"
-          value={expectedEndDate}
-          onChange={(e) => setExpectedEndDate(e.target.value)}
-          required
-        />
+            <input
+              className="border rounded-md px-3 py-2"
+              placeholder="Property ID *"
+              value={form.propertyId}
+              onChange={(e) => onChange('propertyId', e.target.value)}
+            />
 
-        <input
-          type="number"
-          placeholder="Canone mensile (€)"
-          className="border rounded px-3 py-2"
-          value={monthlyRent}
-          onChange={(e) => setMonthlyRent(e.target.value)}
-          required
-        />
+            {form.type === 'TENANT' ? (
+              <input
+                className="border rounded-md px-3 py-2"
+                placeholder="Tenant ID *"
+                value={form.tenantId ?? ''}
+                onChange={(e) => onChange('tenantId', e.target.value)}
+              />
+            ) : (
+              <input
+                className="border rounded-md px-3 py-2"
+                placeholder="Landlord ID *"
+                value={form.landlordId ?? ''}
+                onChange={(e) => onChange('landlordId', e.target.value)}
+              />
+            )}
 
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={billsIncluded} onChange={(e) => setBillsIncluded(e.target.checked)} />
-          Bollette incluse
-        </label>
+            <input
+              className="border rounded-md px-3 py-2"
+              placeholder="Start date (YYYY-MM-DD) *"
+              value={form.startDate}
+              onChange={(e) => onChange('startDate', e.target.value)}
+            />
 
-        <select
-          className="border rounded px-3 py-2"
-          value={status}
-          onChange={(e) => setStatus(e.target.value as any)}
-        >
-          <option value="INCOMING">Incoming</option>
-          <option value="ACTIVE">Active</option>
-          <option value="ENDED">Ended</option>
-        </select>
+            <input
+              className="border rounded-md px-3 py-2"
+              placeholder="End date (YYYY-MM-DD)"
+              value={form.endDate ?? ''}
+              onChange={(e) => onChange('endDate', e.target.value)}
+            />
 
-        <div className="md:col-span-2">
-          <button className="bg-slate-800 text-white px-4 py-2 rounded hover:bg-slate-700">
-            Crea Contratto
+            <input
+              className="border rounded-md px-3 py-2"
+              placeholder="Next payment due (YYYY-MM-DD)"
+              value={form.nextPaymentDue ?? ''}
+              onChange={(e) => onChange('nextPaymentDue', e.target.value)}
+            />
+
+            <input
+              className="border rounded-md px-3 py-2"
+              placeholder="Monthly rent (without bills) *"
+              type="number"
+              value={form.monthlyRentWithoutBills}
+              onChange={(e) => onChange('monthlyRentWithoutBills', e.target.value)}
+            />
+
+            {form.type === 'TENANT' && (
+              <>
+                <input
+                  className="border rounded-md px-3 py-2"
+                  placeholder="Monthly rent (with bills)"
+                  type="number"
+                  value={form.monthlyRentWithBills ?? ''}
+                  onChange={(e) => onChange('monthlyRentWithBills', e.target.value)}
+                />
+                <input
+                  className="border rounded-md px-3 py-2"
+                  placeholder="Bills included amount"
+                  type="number"
+                  value={form.billsIncludedAmount ?? ''}
+                  onChange={(e) => onChange('billsIncludedAmount', e.target.value)}
+                />
+              </>
+            )}
+
+            <input
+              className="border rounded-md px-3 py-2"
+              placeholder="Due day of month (default 5)"
+              type="number"
+              value={form.dueDayOfMonth ?? 5}
+              onChange={(e) => onChange('dueDayOfMonth', e.target.value)}
+            />
+
+            <input
+              className="border rounded-md px-3 py-2"
+              placeholder="External ID (Excel)"
+              value={form.externalId ?? ''}
+              onChange={(e) => onChange('externalId', e.target.value)}
+            />
+          </div>
+
+          <button onClick={create} className="border rounded-md px-4 py-2">
+            Create
           </button>
         </div>
-      </form>
 
-      {/* LISTA */}
-      <div className="bg-white p-4 rounded shadow">
-        <h2 className="text-lg mb-3 font-medium">Lista contratti</h2>
+        <div className="bg-white rounded-xl shadow p-4">
+          <h2 className="font-medium mb-3">Elenco</h2>
 
-        {loading ? (
-          <p>Caricamento...</p>
-        ) : leases.length === 0 ? (
-          <p>Nessun contratto disponibile.</p>
-        ) : (
-          <div className="space-y-3">
-            {leases.map(l => {
-              const t = tenants.find(t => t.id === l.tenantId);
-              const p = properties.find(p => p.id === l.propertyId);
-
-              return (
-                <div key={l.id} className="border rounded p-3 flex justify-between">
+          {loading ? (
+            <div>Caricamento...</div>
+          ) : items.length === 0 ? (
+            <div className="text-sm text-slate-500">Nessun lease.</div>
+          ) : (
+            <div className="space-y-2">
+              {items.map((l) => (
+                <div key={l.id} className="border rounded-lg p-3 flex justify-between gap-3">
                   <div>
                     <div className="font-semibold">
-                      {t?.firstName} {t?.lastName} → {p?.code}
+                      {l.type} · property {l.propertyId}
                     </div>
                     <div className="text-sm text-slate-600">
-                      {l.startDate} → {l.expectedEndDate} ({l.status})
+                      {l.type === 'TENANT'
+                        ? `tenant: ${l.tenantId}`
+                        : `landlord: ${l.landlordId}`}
+                      {' · '}
+                      rent net: {l.monthlyRentWithoutBills} €
                     </div>
-                    <div className="text-xs text-slate-500">
-                      Canone: {l.monthlyRent} € {l.billsIncluded && '(bollette incluse)'}
+                    <div className="text-xs text-slate-500 mt-1">
+                      start: {String(l.startDate)} {l.endDate ? `· end: ${String(l.endDate)}` : ''}
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => handleDelete(l.id)}
-                    className="text-red-600 hover:underline text-sm"
-                  >
-                    Elimina
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => generate(l.id)}
+                      className="border rounded-md px-3 py-2 text-sm"
+                    >
+                      Generate schedule
+                    </button>
+                  </div>
                 </div>
-              );
-            })}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
