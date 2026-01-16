@@ -26,9 +26,11 @@ export class ExpensesService {
     const col = this.collection(holderId);
     const data = this.clean({
       ...dto,
+      status: dto.status ?? 'PLANNED',
       currency: dto.currency ?? 'EUR',
       createdAt: new Date(),
       updatedAt: new Date(),
+      paidDate: dto.paidDate,
     });
 
     const ref = await col.add(data);

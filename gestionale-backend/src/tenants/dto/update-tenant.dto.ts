@@ -1,7 +1,9 @@
 import { IsEmail, IsOptional, IsString } from 'class-validator';
+import { PartialType } from '@nestjs/mapped-types';
+import { CreateTenantDto } from './create-tenant.dto';
 
 // src/tenants/dto/update-tenant.dto.ts
-export class UpdateTenantDto {
+export class UpdateTenantDto extends PartialType(CreateTenantDto)  {
 
   firstName?: string;
   

@@ -1,17 +1,22 @@
+import { IsDateString, IsIn, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+
 export class UpdatePaymentDto {
-  leaseId?: string;
-  tenantId?: string;
-  propertyId?: string;
-  buildingId?: string;
+  @IsOptional() @IsString() leaseId?: string;
+  @IsOptional() @IsString() tenantId?: string;
+  @IsOptional() @IsString() propertyId?: string;
+  @IsOptional() @IsString() buildingId?: string;
 
-  dueDate?: string;
-  paidDate?: string;
+  @IsOptional() @IsDateString() dueDate?: string;
+  @IsOptional() @IsDateString() paidDate?: string;
 
-  amount?: number;
-  currency?: string;
+  @IsOptional() @IsNumber() @Min(0) amount?: number;
+  @IsOptional() @IsString() currency?: string;
 
+  @IsOptional() @IsIn(['RENT', 'BUILDING_FEE', 'OTHER'])
   kind?: 'RENT' | 'BUILDING_FEE' | 'OTHER';
 
+  @IsOptional() @IsIn(['PLANNED', 'PAID', 'OVERDUE'])
   status?: 'PLANNED' | 'PAID' | 'OVERDUE';
-  notes?: string;
+
+  @IsOptional() @IsString() notes?: string;
 }

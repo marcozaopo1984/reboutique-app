@@ -12,7 +12,6 @@ export default function HolderDashboard() {
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-
         <Link
           href="/properties"
           className="border rounded-lg p-6 shadow hover:bg-gray-50"
@@ -43,6 +42,24 @@ export default function HolderDashboard() {
         >
           <h2 className="text-xl font-semibold mb-2">Pagamenti</h2>
           <p>Monitora canoni, scadenze e pagamenti in ritardo.</p>
+        </Link>
+
+        {/* ✅ NUOVO: Spese */}
+        <Link
+          href="/expenses"
+          className="border rounded-lg p-6 shadow hover:bg-gray-50"
+        >
+          <h2 className="text-xl font-semibold mb-2">Spese</h2>
+          <p>Registra e monitora costi, manutenzioni e spese ricorrenti.</p>
+        </Link>
+
+        {/* ✅ NUOVO: Proprietari */}
+        <Link
+          href="/landlords"
+          className="border rounded-lg p-6 shadow hover:bg-gray-50"
+        >
+          <h2 className="text-xl font-semibold mb-2">Proprietari</h2>
+          <p>Gestisci l’anagrafica dei proprietari e i relativi dati.</p>
         </Link>
       </div>
     </div>

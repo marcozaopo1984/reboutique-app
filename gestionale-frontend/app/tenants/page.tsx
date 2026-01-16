@@ -2,6 +2,7 @@
 
 import { useEffect, useState, FormEvent } from 'react';
 import { fetchWithAuth } from '@/lib/apiClient';
+import EntityDocuments from '@/components/EntityDocuments';
 
 type TenantStatus = 'CURRENT' | 'INCOMING' | 'PAST' | 'PENDING';
 
@@ -29,6 +30,9 @@ export default function TenantsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // NEW: quale tenant ha il pannello documenti aperto
+  const [openDocsTenantId, setOpenDocsTenantId] = useState<string | null>(null);
+
   // form state
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -47,9 +51,9 @@ export default function TenantsPage() {
     setError(null);
     try {
       const data = (await fetchWithAuth('/tenants')) as Tenant[];
-      setTenants(data);
+      setTenants(Array.isArray(data) ? data : []);
     } catch (err: any) {
-      setError(err.message ?? 'Errore nel caricamento inquilini');
+      setError(err?.message ?? 'Errore nel caricamento inquilini');
     } finally {
       setLoading(false);
     }
@@ -58,6 +62,20 @@ export default function TenantsPage() {
   useEffect(() => {
     loadTenants();
   }, []);
+
+  const resetForm = () => {
+    setFirstName('');
+    setLastName('');
+    setEmail('');
+    setPhone('');
+    setBirthday('');
+    setNationality('');
+    setSchool('');
+    setStatus('CURRENT');
+    setEuCitizen(null);
+    setGender('');
+    setNotes('');
+  };
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
@@ -76,12 +94,8 @@ export default function TenantsPage() {
         notes: notes || undefined,
       };
 
-      if (euCitizen !== null) {
-        body.euCitizen = euCitizen;
-      }
-      if (gender) {
-        body.gender = gender;
-      }
+      if (euCitizen !== null) body.euCitizen = euCitizen;
+      if (gender) body.gender = gender;
 
       await fetchWithAuth('/tenants', {
         method: 'POST',
@@ -89,34 +103,22 @@ export default function TenantsPage() {
         body: JSON.stringify(body),
       });
 
-      // reset form
-      setFirstName('');
-      setLastName('');
-      setEmail('');
-      setPhone('');
-      setBirthday('');
-      setNationality('');
-      setSchool('');
-      setStatus('CURRENT');
-      setEuCitizen(null);
-      setGender('');
-      setNotes('');
-
+      resetForm();
       await loadTenants();
     } catch (err: any) {
-      setError(err.message ?? 'Errore nella creazione tenant');
+      setError(err?.message ?? 'Errore nella creazione tenant');
     }
   };
 
   const handleDelete = async (id: string) => {
     setError(null);
     try {
-      await fetchWithAuth(`/tenants/${id}`, {
-        method: 'DELETE',
-      });
+      await fetchWithAuth(`/tenants/${id}`, { method: 'DELETE' });
+      // se sto mostrando documenti di questo tenant, chiudo
+      setOpenDocsTenantId((prev) => (prev === id ? null : prev));
       await loadTenants();
     } catch (err: any) {
-      setError(err.message ?? 'Errore nella cancellazione tenant');
+      setError(err?.message ?? 'Errore nella cancellazione tenant');
     }
   };
 
@@ -124,9 +126,7 @@ export default function TenantsPage() {
     <div className="min-h-screen bg-slate-100">
       <div className="max-w-6xl mx-auto py-8 px-4 space-y-6">
         <header className="flex flex-col gap-2 mb-4">
-          <h1 className="text-2xl font-semibold">
-            Inquilini – Reboutique (Holder)
-          </h1>
+          <h1 className="text-2xl font-semibold">Inquilini – Reboutique (Holder)</h1>
           <p className="text-sm text-slate-600">
             Gestisci gli inquilini (current, incoming, past, pending).
           </p>
@@ -134,13 +134,9 @@ export default function TenantsPage() {
 
         {/* FORM CREAZIONE TENANT */}
         <section className="bg-white shadow rounded-lg p-4 mb-6">
-          <h2 className="text-lg font-medium mb-3">
-            Crea nuovo inquilino
-          </h2>
-          <form
-            onSubmit={handleCreate}
-            className="grid grid-cols-1 md:grid-cols-3 gap-4"
-          >
+          <h2 className="text-lg font-medium mb-3">Crea nuovo inquilino</h2>
+
+          <form onSubmit={handleCreate} className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <input
               type="text"
               placeholder="Nome"
@@ -172,8 +168,10 @@ export default function TenantsPage() {
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
             />
+
             <div className="flex flex-col">
               <label className="text-sm mb-1">Data di nascita</label>
+              {/* ✅ date picker */}
               <input
                 type="date"
                 className="border rounded px-3 py-2"
@@ -181,6 +179,7 @@ export default function TenantsPage() {
                 onChange={(e) => setBirthday(e.target.value)}
               />
             </div>
+
             <input
               type="text"
               placeholder="Nazionalità"
@@ -210,9 +209,7 @@ export default function TenantsPage() {
               <select
                 className="border rounded px-3 py-2"
                 value={gender}
-                onChange={(e) =>
-                  setGender(e.target.value as 'M' | 'F' | 'OTHER' | '')
-                }
+                onChange={(e) => setGender(e.target.value as 'M' | 'F' | 'OTHER' | '')}
               >
                 <option value="">Non specificato</option>
                 <option value="M">M</option>
@@ -234,9 +231,7 @@ export default function TenantsPage() {
               <select
                 className="border rounded px-3 py-2"
                 value={status}
-                onChange={(e) =>
-                  setStatus(e.target.value as TenantStatus)
-                }
+                onChange={(e) => setStatus(e.target.value as TenantStatus)}
               >
                 <option value="CURRENT">Current</option>
                 <option value="INCOMING">Incoming</option>
@@ -252,76 +247,103 @@ export default function TenantsPage() {
               onChange={(e) => setNotes(e.target.value)}
             />
 
-            <div className="md:col-span-3">
+            <div className="md:col-span-3 flex items-center gap-3">
               <button
                 type="submit"
                 className="px-4 py-2 rounded bg-slate-800 text-white hover:bg-slate-700"
               >
                 Salva inquilino
               </button>
+              <button
+                type="button"
+                onClick={resetForm}
+                className="px-4 py-2 rounded border hover:bg-slate-50"
+              >
+                Reset
+              </button>
             </div>
           </form>
 
-          {error && (
-            <p className="text-red-500 text-sm mt-2">{error}</p>
-          )}
+          {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
         </section>
 
         {/* LISTA TENANTS */}
         <section className="bg-white shadow rounded-lg p-4">
-          <h2 className="text-lg font-medium mb-3">
-            Lista inquilini
-          </h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-medium">Lista inquilini</h2>
+            <button
+              onClick={loadTenants}
+              className="text-sm border rounded px-3 py-1 hover:bg-slate-50"
+            >
+              Refresh
+            </button>
+          </div>
 
           {loading ? (
             <p>Caricamento...</p>
           ) : tenants.length === 0 ? (
-            <p className="text-sm text-slate-500">
-              Nessun inquilino presente.
-            </p>
+            <p className="text-sm text-slate-500">Nessun inquilino presente.</p>
           ) : (
             <div className="space-y-3">
-              {tenants.map((t) => (
-                <div
-                  key={t.id}
-                  className="border rounded-lg p-3 flex flex-col md:flex-row md:items-center md:justify-between"
-                >
-                  <div>
-                    <div className="font-semibold">
-                      {t.firstName} {t.lastName}{' '}
-                      {t.school && (
-                        <span className="text-xs text-slate-500">
-                          · {t.school}
-                        </span>
-                      )}
+              {tenants.map((t) => {
+                const docsOpen = openDocsTenantId === t.id;
+
+                return (
+                  <div key={t.id} className="border rounded-lg p-3">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                      <div>
+                        <div className="font-semibold">
+                          {t.firstName} {t.lastName}{' '}
+                          {t.school && (
+                            <span className="text-xs text-slate-500">· {t.school}</span>
+                          )}
+                        </div>
+                        <div className="text-sm text-slate-600">
+                          {t.email && <span>{t.email}</span>}
+                          {t.email && t.phone && <span> · </span>}
+                          {t.phone && <span>{t.phone}</span>}
+                        </div>
+                        <div className="text-xs text-slate-500 mt-1">
+                          Stato: {t.status ?? 'CURRENT'}{' '}
+                          {t.nationality && `· ${t.nationality}`}{' '}
+                          {typeof t.euCitizen === 'boolean' &&
+                            `· UE: ${t.euCitizen ? 'Sì' : 'No'}`}
+                          {t.birthday ? ` · Nascita: ${t.birthday}` : ''}
+                        </div>
+                        {t.notes && (
+                          <div className="text-xs text-slate-500 mt-1">Note: {t.notes}</div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setOpenDocsTenantId((prev) => (prev === t.id ? null : t.id))}
+                          className="border rounded-md px-3 py-2 text-sm"
+                        >
+                          {docsOpen ? 'Chiudi documenti' : 'Documenti'}
+                        </button>
+
+                        <button
+                          onClick={() => handleDelete(t.id)}
+                          className="text-sm text-red-600 hover:underline"
+                        >
+                          Elimina
+                        </button>
+                      </div>
                     </div>
-                    <div className="text-sm text-slate-600">
-                      {t.email && <span>{t.email}</span>}
-                      {t.email && t.phone && <span> · </span>}
-                      {t.phone && <span>{t.phone}</span>}
-                    </div>
-                    <div className="text-xs text-slate-500 mt-1">
-                      Stato: {t.status ?? 'CURRENT'}{' '}
-                      {t.nationality && `· ${t.nationality}`}{' '}
-                      {typeof t.euCitizen === 'boolean' &&
-                        `· UE: ${t.euCitizen ? 'Sì' : 'No'}`}
-                    </div>
-                    {t.notes && (
-                      <div className="text-xs text-slate-500 mt-1">
-                        Note: {t.notes}
+
+                    {docsOpen && (
+                      <div className="mt-3">
+                        <EntityDocuments
+                          entityKind="tenants"
+                          entityId={t.id}
+                          label={`Documenti inquilino (${t.firstName} ${t.lastName})`}
+                        />
                       </div>
                     )}
                   </div>
-                  <div className="mt-2 md:mt-0">
-                    <button
-                      onClick={() => handleDelete(t.id)}
-                      className="text-sm text-red-600 hover:underline"
-                    >
-                      Elimina
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>

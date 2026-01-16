@@ -15,6 +15,7 @@ import { Roles } from '../auth/roles.decorator';
 import { CreateLeaseDto } from './dto/create-lease.dto';
 import { UpdateLeaseDto } from './dto/update-lease.dto';
 import { RolesGuard } from '../auth/roles.guard';
+import { CreateLeaseFileDto } from './dto/create-lease-file.dto';
 
 @Controller('leases')
 @UseGuards(FirebaseAuthGuard, RolesGuard)
@@ -69,4 +70,26 @@ export class LeasesController {
     const holderId = this.getHolderId(req);
     return this.leasesService.generateSchedule(holderId, id);
   }
+
+  @Post(':id/files')
+@Roles('HOLDER')
+addFile(@Req() req, @Param('id') leaseId: string, @Body() dto: CreateLeaseFileDto) {
+  const holderId = this.getHolderId(req);
+  return this.leasesService.addFile(holderId, leaseId, dto);
 }
+
+@Get(':id/files')
+@Roles('HOLDER')
+listFiles(@Req() req, @Param('id') leaseId: string) {
+  const holderId = this.getHolderId(req);
+  return this.leasesService.listFiles(holderId, leaseId);
+}
+
+@Delete(':id/files/:fileId')
+@Roles('HOLDER')
+removeFile(@Req() req, @Param('id') leaseId: string, @Param('fileId') fileId: string) {
+  const holderId = this.getHolderId(req);
+  return this.leasesService.removeFile(holderId, leaseId, fileId);
+}
+}
+
