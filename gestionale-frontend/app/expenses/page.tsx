@@ -1,113 +1,190 @@
 'use client';
 
-import { useEffect, useState, FormEvent } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { fetchWithAuth } from '@/lib/apiClient';
+import EntityDocuments from '@/components/EntityDocuments';
+import { Field, Input, Select } from '@/components/form/Field';
 
-type Property = {
-  id: string;
-  code: string;
-  name: string;
-  type: string;
-};
+type Property = { id: string; code?: string; name?: string; type?: string };
 
+type ExpenseFrequency = 'ONCE' | 'MONTHLY' | 'YEARLY';
+type ExpenseScope = 'BUILDING' | 'UNIT';
+type ExpenseAllocationMode = 'NONE' | 'PER_UNIT' | 'PER_M2' | 'PER_PERSON';
 type ExpenseStatus = 'PLANNED' | 'PAID' | 'OVERDUE';
 
 type Expense = {
   id: string;
+
   propertyId: string;
   type: string;
   description?: string;
 
   amount: number;
-  currency: string;
+  currency?: string;
 
-  costDate: string;
+  costDate: string; // "YYYY-MM-DD"
   costMonth?: string;
 
-  frequency?: string;
-  scope?: string;
-  allocationMode?: string;
+  frequency?: ExpenseFrequency;
 
-  // ✅ nuovi campi
+  scope?: ExpenseScope;
+  allocationMode?: ExpenseAllocationMode;
+
   status?: ExpenseStatus;
   paidDate?: string;
 
   notes?: string;
+
+  leaseId?: string;
 };
 
+type CreateExpenseForm = {
+  propertyId: string;
+  type: string;
+  description: string;
+
+  amount: string;
+  currency: string;
+
+  costDate: string;  // YYYY-MM-DD
+  costMonth: string; // '' oppure YYYY-MM
+
+  frequency: '' | ExpenseFrequency;
+
+  scope: '' | ExpenseScope;
+  allocationMode: '' | ExpenseAllocationMode;
+
+  status: ExpenseStatus;
+  paidDate: string; // '' oppure YYYY-MM-DD
+
+  notes: string;
+};
+
+const cleanStr = (s: string) => s.trim();
+const toNum = (v: string) => {
+  const s = cleanStr(v);
+  return s === '' ? undefined : Number(s);
+};
+
+// YYYY-MM from YYYY-MM-DD
+const monthFromDate = (d: string) => (d && d.length >= 7 ? d.slice(0, 7) : '');
+
 export default function ExpensesPage() {
+  const [items, setItems] = useState<Expense[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
+
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // FORM state
-  const [propertyId, setPropertyId] = useState('');
-  const [type, setType] = useState('');
-  const [description, setDescription] = useState('');
-  const [amount, setAmount] = useState('');
-  const [costDate, setCostDate] = useState('');
-  const [scope, setScope] = useState<'BUILDING' | 'UNIT'>('UNIT');
+  // quale expense ha documenti aperti
+  const [openDocsExpenseId, setOpenDocsExpenseId] = useState<string | null>(null);
 
-  // ✅ nuovi stati form
-  const [status, setStatus] = useState<ExpenseStatus>('PLANNED');
-  const [paidDate, setPaidDate] = useState(''); // opzionale
+  const [form, setForm] = useState<CreateExpenseForm>({
+    propertyId: '',
+    type: '',
+    description: '',
+    amount: '',
+    currency: 'EUR',
+    costDate: '',
+    costMonth: '',
+    frequency: '',
+    scope: '',
+    allocationMode: '',
+    status: 'PLANNED',
+    paidDate: '',
+    notes: '',
+  });
 
-  const loadData = async () => {
+  const onChange = (key: keyof CreateExpenseForm, value: string) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const propertyLabel = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of properties) {
+      const code = p.code ? p.code : p.id;
+      const name = p.name ? ` – ${p.name}` : '';
+      m.set(p.id, `${code}${name}`);
+    }
+    return m;
+  }, [properties]);
+
+  const loadAll = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [props, exps] = await Promise.all([
-        fetchWithAuth('/properties'),
+      const [expensesRes, propsRes] = await Promise.all([
         fetchWithAuth('/expenses'),
+        fetchWithAuth('/properties'),
       ]);
 
-      setProperties(Array.isArray(props) ? props : []);
-      setExpenses(Array.isArray(exps) ? exps : []);
-    } catch (err: any) {
-      setError(err?.message ?? 'Errore caricamento spese');
+      setItems(Array.isArray(expensesRes) ? expensesRes : []);
+      setProperties(Array.isArray(propsRes) ? propsRes : []);
+    } catch (e: any) {
+      setError(e?.message ?? 'Errore caricamento dati');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData();
+    loadAll();
   }, []);
 
-  // se l'utente mette status=PAID e paidDate vuota, la settiamo automaticamente a oggi al submit
-  const todayISO = () => new Date().toISOString().slice(0, 10);
-
   const resetForm = () => {
-    setPropertyId('');
-    setType('');
-    setDescription('');
-    setAmount('');
-    setCostDate('');
-    setScope('UNIT');
-    setStatus('PLANNED');
-    setPaidDate('');
+    setForm({
+      propertyId: '',
+      type: '',
+      description: '',
+      amount: '',
+      currency: 'EUR',
+      costDate: '',
+      costMonth: '',
+      frequency: '',
+      scope: '',
+      allocationMode: '',
+      status: 'PLANNED',
+      paidDate: '',
+      notes: '',
+    });
   };
 
-  const handleCreate = async (e: FormEvent) => {
-    e.preventDefault();
+  const create = async () => {
     setError(null);
 
+    if (!form.propertyId) return setError('Seleziona una property');
+    if (!cleanStr(form.type)) return setError('Type obbligatorio');
+    if (!form.costDate) return setError('Seleziona costDate');
+
+    const amountNum = toNum(form.amount);
+    if (amountNum === undefined || Number.isNaN(amountNum)) return setError('Importo non valido');
+
+    const costMonth = cleanStr(form.costMonth) || monthFromDate(form.costDate) || undefined;
+
+    const body: any = {
+      propertyId: form.propertyId,
+      type: cleanStr(form.type),
+      description: cleanStr(form.description) || undefined,
+
+      amount: amountNum,
+      currency: cleanStr(form.currency) || 'EUR',
+
+      costDate: form.costDate,
+      costMonth,
+
+      frequency: form.frequency || undefined,
+      scope: form.scope || undefined,
+      allocationMode: form.allocationMode || undefined,
+
+      status: form.status || 'PLANNED',
+      paidDate: form.paidDate.trim() || undefined,
+
+      notes: cleanStr(form.notes) || undefined,
+    };
+
+    setBusy(true);
     try {
-      const body: any = {
-        propertyId,
-        type,
-        description: description || undefined,
-        amount: Number(amount),
-        currency: 'EUR',
-        costDate,
-        scope,
-
-        // ✅ nuovi campi
-        status,
-        paidDate: status === 'PAID' ? (paidDate || todayISO()) : undefined,
-      };
-
       await fetchWithAuth('/expenses', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -115,230 +192,310 @@ export default function ExpensesPage() {
       });
 
       resetForm();
-      await loadData();
-    } catch (err: any) {
-      setError(err?.message ?? 'Errore creazione spesa');
+      await loadAll();
+    } catch (e: any) {
+      setError(e?.message ?? 'Errore creazione spesa');
+    } finally {
+      setBusy(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const remove = async (id: string) => {
     setError(null);
+    setBusy(true);
     try {
       await fetchWithAuth(`/expenses/${id}`, { method: 'DELETE' });
-      await loadData();
-    } catch (err: any) {
-      setError(err?.message ?? 'Errore eliminazione spesa');
-    }
-  };
-
-  const setExpenseStatus = async (id: string, newStatus: ExpenseStatus) => {
-    setError(null);
-    try {
-      const body =
-        newStatus === 'PAID'
-          ? { status: 'PAID', paidDate: todayISO() }
-          : { status: newStatus, paidDate: undefined };
-
-      await fetchWithAuth(`/expenses/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      await loadData();
-    } catch (err: any) {
-      setError(err?.message ?? 'Errore aggiornamento status');
+      setOpenDocsExpenseId((prev) => (prev === id ? null : prev));
+      await loadAll();
+    } catch (e: any) {
+      setError(e?.message ?? 'Errore eliminazione spesa');
+    } finally {
+      setBusy(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 p-6">
-      <h1 className="text-2xl font-semibold mb-6">Spese (Expenses)</h1>
+    <div className="min-h-screen bg-slate-100">
+      <div className="max-w-5xl mx-auto py-8 px-4 space-y-6">
+        <header className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold">Expenses</h1>
+            <p className="text-sm text-slate-600">Gestisci spese (unità / building).</p>
+          </div>
 
-      {error && (
-        <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded">
-          {error}
-        </div>
-      )}
-
-      {/* FORM */}
-      <form
-        onSubmit={handleCreate}
-        className="bg-white shadow p-4 rounded mb-6 grid grid-cols-1 md:grid-cols-2 gap-4"
-      >
-        <select
-          className="border rounded px-3 py-2"
-          value={propertyId}
-          onChange={(e) => setPropertyId(e.target.value)}
-          required
-        >
-          <option value="">Seleziona proprietà</option>
-          {properties.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.code} – {p.name}
-            </option>
-          ))}
-        </select>
-
-        <input
-          type="text"
-          placeholder="Tipologia spesa"
-          className="border rounded px-3 py-2"
-          value={type}
-          onChange={(e) => setType(e.target.value)}
-          required
-        />
-
-        <input
-          type="text"
-          placeholder="Descrizione"
-          className="border rounded px-3 py-2 md:col-span-2"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
-
-        <input
-          type="number"
-          placeholder="Importo (€)"
-          className="border rounded px-3 py-2"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          required
-        />
-
-        <input
-          type="date"
-          className="border rounded px-3 py-2"
-          value={costDate}
-          onChange={(e) => setCostDate(e.target.value)}
-          required
-        />
-
-        <select
-          className="border rounded px-3 py-2"
-          value={scope}
-          onChange={(e) => setScope(e.target.value as any)}
-        >
-          <option value="UNIT">Unità</option>
-          <option value="BUILDING">Edificio</option>
-        </select>
-
-        {/* ✅ nuovo select status */}
-        <select
-          className="border rounded px-3 py-2"
-          value={status}
-          onChange={(e) => {
-            const v = e.target.value as ExpenseStatus;
-            setStatus(v);
-            if (v !== 'PAID') setPaidDate('');
-          }}
-        >
-          <option value="PLANNED">Da pagare</option>
-          <option value="PAID">Pagata</option>
-          <option value="OVERDUE">In ritardo</option>
-        </select>
-
-        {/* ✅ paidDate solo se PAID */}
-        {status === 'PAID' ? (
-          <input
-            type="date"
-            className="border rounded px-3 py-2"
-            value={paidDate}
-            onChange={(e) => setPaidDate(e.target.value)}
-            placeholder="Data pagamento"
-          />
-        ) : (
-          <div className="hidden md:block" />
-        )}
-
-        <div className="md:col-span-2 flex items-center gap-3">
-          <button className="bg-slate-800 text-white px-4 py-2 rounded hover:bg-slate-700">
-            Crea Spesa
-          </button>
           <button
-            type="button"
-            className="border px-4 py-2 rounded hover:bg-slate-50"
-            onClick={resetForm}
-          >
-            Reset
-          </button>
-        </div>
-      </form>
-
-      {/* LISTA */}
-      <div className="bg-white p-4 rounded shadow">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-medium">Lista spese</h2>
-          <button
-            onClick={loadData}
-            className="text-sm border rounded px-3 py-1 hover:bg-slate-50"
+            onClick={loadAll}
+            disabled={busy}
+            className="text-sm border rounded px-3 py-1 hover:bg-slate-50 disabled:opacity-50"
           >
             Refresh
           </button>
+        </header>
+
+        {error && (
+          <div className="mb-2 bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded">
+            {error}
+          </div>
+        )}
+
+        {/* CREATE FORM */}
+        <div className="bg-white rounded-xl shadow p-4 space-y-3">
+          <h2 className="font-medium">Nuova spesa</h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Field label="Immobile" required>
+              <Select
+                value={form.propertyId}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => onChange('propertyId', e.target.value)}
+                disabled={busy}
+              >
+                <option value="">Seleziona immobile *</option>
+                {properties.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {propertyLabel.get(p.id) ?? p.id}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+
+            <Field label="Type" required>
+              <Input
+                value={form.type}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('type', e.target.value)}
+                placeholder="Es: CONDOMINIO, BOLLETTA, MANUTENZIONE..."
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Cost date" required>
+              <Input
+                type="date"
+                value={form.costDate}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  const v = e.target.value;
+                  setForm((prev) => ({
+                    ...prev,
+                    costDate: v,
+                    costMonth: prev.costMonth || monthFromDate(v),
+                  }));
+                }}
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Cost month (YYYY-MM)">
+              <Input
+                value={form.costMonth}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('costMonth', e.target.value)}
+                placeholder="YYYY-MM (auto)"
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Importo" required>
+              <Input
+                type="number"
+                value={form.amount}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('amount', e.target.value)}
+                placeholder="100"
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Currency">
+              <Input
+                value={form.currency}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('currency', e.target.value)}
+                placeholder="EUR"
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Frequency">
+              <Select
+                value={form.frequency}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                  onChange('frequency', e.target.value as '' | ExpenseFrequency)
+                }
+                disabled={busy}
+              >
+                <option value="">(none)</option>
+                <option value="ONCE">ONCE</option>
+                <option value="MONTHLY">MONTHLY</option>
+                <option value="YEARLY">YEARLY</option>
+              </Select>
+            </Field>
+
+            <Field label="Scope">
+              <Select
+                value={form.scope}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                  onChange('scope', e.target.value as '' | ExpenseScope)
+                }
+                disabled={busy}
+              >
+                <option value="">(none)</option>
+                <option value="UNIT">UNIT</option>
+                <option value="BUILDING">BUILDING</option>
+              </Select>
+            </Field>
+
+            <Field label="Allocation mode">
+              <Select
+                value={form.allocationMode}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                  onChange('allocationMode', e.target.value as '' | ExpenseAllocationMode)
+                }
+                disabled={busy}
+              >
+                <option value="">(none)</option>
+                <option value="NONE">NONE</option>
+                <option value="PER_UNIT">PER_UNIT</option>
+                <option value="PER_M2">PER_M2</option>
+                <option value="PER_PERSON">PER_PERSON</option>
+              </Select>
+            </Field>
+
+            <Field label="Status" required>
+              <Select
+                value={form.status}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                  onChange('status', e.target.value as ExpenseStatus)
+                }
+                disabled={busy}
+              >
+                <option value="PLANNED">PLANNED</option>
+                <option value="PAID">PAID</option>
+                <option value="OVERDUE">OVERDUE</option>
+              </Select>
+            </Field>
+
+            <Field label="Paid date">
+              <Input
+                type="date"
+                value={form.paidDate}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('paidDate', e.target.value)}
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Description">
+              <Input
+                value={form.description}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('description', e.target.value)}
+                placeholder="Breve descrizione..."
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Notes">
+              <Input
+                value={form.notes}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('notes', e.target.value)}
+                placeholder="Note interne..."
+                disabled={busy}
+              />
+            </Field>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={create}
+              disabled={busy}
+              className="bg-slate-800 text-white px-4 py-2 rounded hover:bg-slate-700 disabled:opacity-50"
+            >
+              {busy ? 'Salvataggio...' : 'Create'}
+            </button>
+
+            <button
+              type="button"
+              onClick={resetForm}
+              disabled={busy}
+              className="border px-4 py-2 rounded hover:bg-slate-50 disabled:opacity-50"
+            >
+              Reset
+            </button>
+          </div>
         </div>
 
-        {loading ? (
-          <p>Caricamento...</p>
-        ) : expenses.length === 0 ? (
-          <p>Nessuna spesa presente.</p>
-        ) : (
-          <div className="space-y-3">
-            {expenses.map((exp) => {
-              const prop = properties.find((p) => p.id === exp.propertyId);
-              const expStatus = exp.status ?? 'PLANNED';
+        {/* LIST */}
+        <div className="bg-white rounded-xl shadow p-4">
+          <h2 className="font-medium mb-3">Elenco</h2>
 
-              return (
-                <div key={exp.id} className="border rounded p-3 flex justify-between gap-3">
-                  <div>
-                    <div className="font-semibold">
-                      {exp.type} – {exp.amount} €
+          {loading ? (
+            <div>Caricamento...</div>
+          ) : items.length === 0 ? (
+            <div className="text-sm text-slate-500">Nessuna spesa.</div>
+          ) : (
+            <div className="space-y-2">
+              {items.map((x) => {
+                const docsOpen = openDocsExpenseId === x.id;
+                const propText = propertyLabel.get(x.propertyId) ?? x.propertyId;
+
+                return (
+                  <div key={x.id} className="border rounded-lg p-3">
+                    <div className="flex justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-semibold truncate">
+                          {propText} · {x.type}
+                        </div>
+
+                        <div className="text-sm text-slate-600">
+                          {x.amount} {x.currency ?? 'EUR'} · {x.status ?? 'PLANNED'}
+                          {x.frequency ? ` · ${x.frequency}` : ''}
+                          {x.scope ? ` · ${x.scope}` : ''}
+                        </div>
+
+                        <div className="text-xs text-slate-500 mt-1">
+                          Cost date: {x.costDate}
+                          {x.paidDate ? ` · Paid: ${x.paidDate}` : ''}
+                          {x.costMonth ? ` · Month: ${x.costMonth}` : ''}
+                        </div>
+
+                        {x.description && (
+                          <div className="text-xs text-slate-500 mt-1">Desc: {x.description}</div>
+                        )}
+                        {x.notes && (
+                          <div className="text-xs text-slate-500 mt-1">Note: {x.notes}</div>
+                        )}
+
+                        <div className="text-[11px] text-slate-400 mt-1">id: {x.id}</div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setOpenDocsExpenseId((prev) => (prev === x.id ? null : x.id))}
+                          className="border rounded-md px-3 py-2 text-sm"
+                          disabled={busy}
+                        >
+                          {docsOpen ? 'Chiudi documenti' : 'Documenti'}
+                        </button>
+
+                        <button
+                          onClick={() => remove(x.id)}
+                          disabled={busy}
+                          className="text-sm text-red-600 hover:underline disabled:opacity-50"
+                        >
+                          Elimina
+                        </button>
+                      </div>
                     </div>
-                    <div className="text-sm text-slate-600">
-                      {prop?.code} ({prop?.type}) · {exp.costDate}
-                    </div>
-                    <div className="text-xs text-slate-500">
-                      Scope: {exp.scope || 'UNIT'} — Stato: {expStatus}
-                      {exp.paidDate ? ` — Pagata: ${exp.paidDate}` : ''}
-                    </div>
-                    {exp.description && (
-                      <div className="text-xs text-slate-500 mt-1">
-                        {exp.description}
+
+                    {docsOpen && (
+                      <div className="mt-3">
+                        <EntityDocuments
+                          entityKind="expenses"
+                          entityId={x.id}
+                          label={`Documenti spesa (${propText} · ${x.type})`}
+                        />
                       </div>
                     )}
                   </div>
-
-                  <div className="flex flex-col items-end gap-2">
-                    <div className="flex gap-2">
-                      {expStatus !== 'PAID' && (
-                        <button
-                          className="text-sm border rounded px-3 py-1 hover:bg-slate-50"
-                          onClick={() => setExpenseStatus(exp.id, 'PAID')}
-                        >
-                          Segna PAID
-                        </button>
-                      )}
-                      {expStatus !== 'PLANNED' && (
-                        <button
-                          className="text-sm border rounded px-3 py-1 hover:bg-slate-50"
-                          onClick={() => setExpenseStatus(exp.id, 'PLANNED')}
-                        >
-                          Segna PLANNED
-                        </button>
-                      )}
-                    </div>
-
-                    <button
-                      className="text-red-600 hover:underline text-sm"
-                      onClick={() => handleDelete(exp.id)}
-                    >
-                      Elimina
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

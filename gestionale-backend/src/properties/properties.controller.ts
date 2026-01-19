@@ -1,8 +1,5 @@
-
 import {
-
   Controller,
-
   Get,
   Post,
   Body,
@@ -19,6 +16,7 @@ import { UpdatePropertyDto } from './dto/update-property.dto';
 import { FirebaseAuthGuard } from '../auth/firebase-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
+import { CreatePropertyFileDto } from './dto/create-property-file.dto';
 
 @Controller('properties')
 @UseGuards(FirebaseAuthGuard, RolesGuard)
@@ -53,11 +51,7 @@ export class PropertiesController {
 
   @Patch(':id')
   @Roles('HOLDER')
-  update(
-    @Req() req,
-    @Param('id') id: string,
-    @Body() dto: UpdatePropertyDto,
-  ) {
+  update(@Req() req, @Param('id') id: string, @Body() dto: UpdatePropertyDto) {
     const holderId = this.getHolderId(req);
     return this.propertiesService.update(holderId, id, dto);
   }
@@ -68,5 +62,29 @@ export class PropertiesController {
     const holderId = this.getHolderId(req);
     return this.propertiesService.remove(holderId, id);
   }
-  
+
+  // -------------------------
+  // FILES (documenti)
+  // -------------------------
+
+  @Post(':id/files')
+  @Roles('HOLDER')
+  addFile(@Req() req, @Param('id') propertyId: string, @Body() dto: CreatePropertyFileDto) {
+    const holderId = this.getHolderId(req);
+    return this.propertiesService.addFile(holderId, propertyId, dto);
+  }
+
+  @Get(':id/files')
+  @Roles('HOLDER')
+  listFiles(@Req() req, @Param('id') propertyId: string) {
+    const holderId = this.getHolderId(req);
+    return this.propertiesService.listFiles(holderId, propertyId);
+  }
+
+  @Delete(':id/files/:fileId')
+  @Roles('HOLDER')
+  removeFile(@Req() req, @Param('id') propertyId: string, @Param('fileId') fileId: string) {
+    const holderId = this.getHolderId(req);
+    return this.propertiesService.removeFile(holderId, propertyId, fileId);
+  }
 }

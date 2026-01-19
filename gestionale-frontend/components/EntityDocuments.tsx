@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auth, storage } from '@/lib/firebaseClient';
 import { fetchWithAuth } from '@/lib/apiClient';
 
-type EntityKind = 'tenants' | 'leases';
+type EntityKind = 'tenants' | 'leases' | 'properties' | 'payments' | 'expenses' | 'landlords';
 
 type FileDoc = {
   id: string;
@@ -19,7 +19,7 @@ type FileDoc = {
 };
 
 function bytesToSize(n?: number) {
-  if (!n && n !== 0) return '';
+  if (n === undefined || n === null) return '';
   const units = ['B', 'KB', 'MB', 'GB'];
   let v = n;
   let i = 0;
@@ -31,13 +31,13 @@ function bytesToSize(n?: number) {
 }
 
 export default function EntityDocuments(props: {
-  entityKind: EntityKind;     // 'tenants' | 'leases'
+  entityKind: EntityKind;
   entityId: string;
-  label?: string;            // es. "Documenti inquilino"
+  label?: string;
 }) {
   const { entityKind, entityId, label } = props;
 
-  const holderId = auth.currentUser?.uid; // per ora: holderId = uid (come nel backend)
+  const holderId = auth.currentUser?.uid; // in questo progetto holderId = uid
   const baseApi = useMemo(() => `/${entityKind}/${entityId}/files`, [entityKind, entityId]);
 
   const [files, setFiles] = useState<FileDoc[]>([]);
@@ -46,12 +46,15 @@ export default function EntityDocuments(props: {
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<File | null>(null);
 
+  // ✅ per aprire file picker via bottone
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
   const loadFiles = async () => {
     setLoading(true);
     setError(null);
     try {
       const data = (await fetchWithAuth(baseApi)) as FileDoc[];
-      setFiles(data ?? []);
+      setFiles(Array.isArray(data) ? data : []);
     } catch (e: any) {
       setError(e?.message ?? 'Errore caricamento documenti');
     } finally {
@@ -60,10 +63,14 @@ export default function EntityDocuments(props: {
   };
 
   useEffect(() => {
-    // carica lazy quando montato
     loadFiles();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseApi]);
+
+  const openPicker = () => {
+    // i browser permettono l’apertura del picker SOLO su gesto utente (click) ✅
+    fileInputRef.current?.click();
+  };
 
   const handleUpload = async () => {
     setError(null);
@@ -73,6 +80,7 @@ export default function EntityDocuments(props: {
 
     setBusy(true);
     try {
+      // path coerente con storage rules: holders/{holderId}/{entityKind}/{entityId}/files/...
       const storagePath = `holders/${holderId}/${entityKind}/${entityId}/files/${selected.name}`;
 
       // 1) Upload su Firebase Storage
@@ -98,6 +106,9 @@ export default function EntityDocuments(props: {
       });
 
       setSelected(null);
+      // reset input (così puoi ricaricare lo stesso file se vuoi)
+      if (fileInputRef.current) fileInputRef.current.value = '';
+
       await loadFiles();
     } catch (e: any) {
       setError(e?.message ?? 'Errore upload documento');
@@ -125,14 +136,36 @@ export default function EntityDocuments(props: {
 
       {error && <div className="text-sm text-red-600 mb-2">{error}</div>}
 
-      {/* Upload */}
+      {/* ✅ file input nascosto + bottone che apre file picker */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        onChange={(e) => setSelected(e.target.files?.[0] ?? null)}
+        disabled={busy}
+      />
+
       <div className="flex flex-col md:flex-row gap-2 md:items-center">
-        <input
-          type="file"
-          className="text-sm"
-          onChange={(e) => setSelected(e.target.files?.[0] ?? null)}
+        <button
+          type="button"
+          onClick={openPicker}
           disabled={busy}
-        />
+          className="px-3 py-2 text-sm rounded border bg-white hover:bg-slate-50 disabled:opacity-50"
+        >
+          Seleziona file
+        </button>
+
+        <div className="text-sm text-slate-700">
+          {selected ? (
+            <>
+              <span className="font-medium">{selected.name}</span>{' '}
+              <span className="text-slate-500">({bytesToSize(selected.size)})</span>
+            </>
+          ) : (
+            <span className="text-slate-500">Nessun file selezionato</span>
+          )}
+        </div>
+
         <button
           type="button"
           onClick={handleUpload}
@@ -141,11 +174,12 @@ export default function EntityDocuments(props: {
         >
           {busy ? 'Operazione in corso...' : 'Carica documento'}
         </button>
+
         <button
           type="button"
           onClick={loadFiles}
           disabled={busy}
-          className="px-3 py-2 text-sm rounded border hover:bg-white disabled:opacity-50"
+          className="px-3 py-2 text-sm rounded border bg-white hover:bg-slate-50 disabled:opacity-50"
         >
           Aggiorna lista
         </button>
@@ -165,9 +199,7 @@ export default function EntityDocuments(props: {
               return (
                 <div key={f.id} className="flex items-center justify-between border rounded p-2 bg-white">
                   <div className="min-w-0">
-                    <div className="text-sm font-medium truncate">
-                      {f.fileName ?? 'Documento'}
-                    </div>
+                    <div className="text-sm font-medium truncate">{f.fileName ?? 'Documento'}</div>
                     <div className="text-xs text-slate-500 truncate">
                       {bytesToSize(f.sizeBytes)} {f.mimeType ? `· ${f.mimeType}` : ''} {sp ? `· ${sp}` : ''}
                     </div>

@@ -13,6 +13,7 @@ import {
 import { ExpensesService } from './expenses.service';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
+import { CreateExpenseFileDto } from './dto/create-expense-file.dto';
 import { FirebaseAuthGuard } from '../auth/firebase-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -55,5 +56,24 @@ export class ExpensesController {
   @Roles('HOLDER')
   remove(@Req() req, @Param('id') id: string) {
     return this.expensesService.remove(this.getHolderId(req), id);
+  }
+
+  // ---- FILES ----
+  @Post(':id/files')
+  @Roles('HOLDER')
+  addFile(@Req() req, @Param('id') id: string, @Body() dto: CreateExpenseFileDto) {
+    return this.expensesService.addFile(this.getHolderId(req), id, dto);
+  }
+
+  @Get(':id/files')
+  @Roles('HOLDER')
+  listFiles(@Req() req, @Param('id') id: string) {
+    return this.expensesService.listFiles(this.getHolderId(req), id);
+  }
+
+  @Delete(':id/files/:fileId')
+  @Roles('HOLDER')
+  removeFile(@Req() req, @Param('id') id: string, @Param('fileId') fileId: string) {
+    return this.expensesService.removeFile(this.getHolderId(req), id, fileId);
   }
 }

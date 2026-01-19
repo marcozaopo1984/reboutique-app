@@ -1,265 +1,607 @@
 'use client';
 
-import { useEffect, useState, FormEvent } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { fetchWithAuth } from '@/lib/apiClient';
+import EntityDocuments from '@/components/EntityDocuments';
+import { Field, Input, Select } from '@/components/form/Field';
+
+type PropertyType = 'APARTMENT' | 'ROOM' | 'BED';
 
 type Property = {
   id: string;
+
   code: string;
   name: string;
+
   address?: string;
-  type: 'APARTMENT' | 'ROOM' | 'BED';
+  type: PropertyType;
+
+  apartment?: string;
+  room?: string;
+
+  beds?: number;
+  roomSizeM2?: number;
+
+  hasBalcony?: boolean;
+  hasDryer?: boolean;
+  hasAC?: boolean;
+  hasHeating?: boolean;
+
   baseMonthlyRent?: number;
   monthlyUtilities?: number;
   depositMonths?: number;
+
+  buildingId?: string;
+  floor?: number;
+  unitNumber?: string;
+
+  websiteUrl?: string;
+  airbnbUrl?: string;
+  spotahomeUrl?: string;
+
   isPublished?: boolean;
 };
 
+type CreatePropertyForm = {
+  code: string;
+  name: string;
+  address: string;
+  type: PropertyType;
+
+  apartment: string;
+  room: string;
+
+  beds: string;
+  roomSizeM2: string;
+
+  hasBalcony: boolean;
+  hasDryer: boolean;
+  hasAC: boolean;
+  hasHeating: boolean;
+
+  baseMonthlyRent: string;
+  monthlyUtilities: string;
+  depositMonths: string;
+
+  buildingId: string;
+  floor: string;
+  unitNumber: string;
+
+  websiteUrl: string;
+  airbnbUrl: string;
+  spotahomeUrl: string;
+
+  isPublished: boolean;
+};
+
+const cleanStr = (s: string) => s.trim();
+const toNum = (v: string) => {
+  const s = cleanStr(v);
+  return s === '' ? undefined : Number(s);
+};
+
 export default function PropertiesPage() {
-  const [properties, setProperties] = useState<Property[]>([]);
+  const [items, setItems] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [code, setCode] = useState('');
-  const [name, setName] = useState('');
-  const [address, setAddress] = useState('');
-  const [type, setType] = useState<'APARTMENT' | 'ROOM' | 'BED'>('ROOM');
-  const [baseMonthlyRent, setBaseMonthlyRent] = useState('');
-  const [monthlyUtilities, setMonthlyUtilities] = useState('');
-  const [depositMonths, setDepositMonths] = useState('');
-  const [isPublished, setIsPublished] = useState(true);
+  const [openDocsPropertyId, setOpenDocsPropertyId] = useState<string | null>(null);
 
-  const loadProperties = async () => {
+  const [form, setForm] = useState<CreatePropertyForm>({
+    code: '',
+    name: '',
+    address: '',
+    type: 'ROOM',
+
+    apartment: '',
+    room: '',
+
+    beds: '',
+    roomSizeM2: '',
+
+    hasBalcony: false,
+    hasDryer: false,
+    hasAC: false,
+    hasHeating: false,
+
+    baseMonthlyRent: '',
+    monthlyUtilities: '',
+    depositMonths: '',
+
+    buildingId: '',
+    floor: '',
+    unitNumber: '',
+
+    websiteUrl: '',
+    airbnbUrl: '',
+    spotahomeUrl: '',
+
+    isPublished: true,
+  });
+
+  const onChange = (key: keyof CreatePropertyForm, value: any) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const propertyLabel = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of items) {
+      m.set(p.id, `${p.code} – ${p.name}`);
+    }
+    return m;
+  }, [items]);
+
+  const loadAll = async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = (await fetchWithAuth('/properties')) as Property[];
-      setProperties(data);
-    } catch (err: any) {
-      setError(err.message ?? 'Errore nel caricamento immobili');
+      const res = await fetchWithAuth('/properties');
+      setItems(Array.isArray(res) ? res : []);
+    } catch (e: any) {
+      setError(e?.message ?? 'Errore caricamento properties');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadProperties();
+    loadAll();
   }, []);
 
-  const handleCreate = async (e: FormEvent) => {
-    e.preventDefault();
+  const resetForm = () => {
+    setForm({
+      code: '',
+      name: '',
+      address: '',
+      type: 'ROOM',
+
+      apartment: '',
+      room: '',
+
+      beds: '',
+      roomSizeM2: '',
+
+      hasBalcony: false,
+      hasDryer: false,
+      hasAC: false,
+      hasHeating: false,
+
+      baseMonthlyRent: '',
+      monthlyUtilities: '',
+      depositMonths: '',
+
+      buildingId: '',
+      floor: '',
+      unitNumber: '',
+
+      websiteUrl: '',
+      airbnbUrl: '',
+      spotahomeUrl: '',
+
+      isPublished: true,
+    });
+  };
+
+  const create = async () => {
     setError(null);
 
-    try {
-      const body = {
-        code,
-        name,
-        address: address || undefined,
-        type,
-        baseMonthlyRent: baseMonthlyRent
-          ? Number(baseMonthlyRent)
-          : undefined,
-        monthlyUtilities: monthlyUtilities
-          ? Number(monthlyUtilities)
-          : undefined,
-        depositMonths: depositMonths
-          ? Number(depositMonths)
-          : undefined,
-        isPublished,
-      };
+    if (!cleanStr(form.code)) return setError('Code obbligatorio');
+    if (!cleanStr(form.name)) return setError('Name obbligatorio');
+    if (!form.type) return setError('Type obbligatorio');
 
+    const body: any = {
+      code: cleanStr(form.code),
+      name: cleanStr(form.name),
+      address: cleanStr(form.address) || undefined,
+      type: form.type,
+
+      apartment: cleanStr(form.apartment) || undefined,
+      room: cleanStr(form.room) || undefined,
+
+      beds: toNum(form.beds),
+      roomSizeM2: toNum(form.roomSizeM2),
+
+      hasBalcony: form.hasBalcony || undefined,
+      hasDryer: form.hasDryer || undefined,
+      hasAC: form.hasAC || undefined,
+      hasHeating: form.hasHeating || undefined,
+
+      baseMonthlyRent: toNum(form.baseMonthlyRent),
+      monthlyUtilities: toNum(form.monthlyUtilities),
+      depositMonths: toNum(form.depositMonths),
+
+      buildingId: cleanStr(form.buildingId) || undefined,
+      floor: toNum(form.floor),
+      unitNumber: cleanStr(form.unitNumber) || undefined,
+
+      websiteUrl: cleanStr(form.websiteUrl) || undefined,
+      airbnbUrl: cleanStr(form.airbnbUrl) || undefined,
+      spotahomeUrl: cleanStr(form.spotahomeUrl) || undefined,
+
+      isPublished: !!form.isPublished,
+    };
+
+    // evita NaN
+    for (const k of ['beds', 'roomSizeM2', 'baseMonthlyRent', 'monthlyUtilities', 'depositMonths', 'floor'] as const) {
+      if (body[k] !== undefined && Number.isNaN(body[k])) return setError(`Valore numerico non valido: ${k}`);
+    }
+
+    setBusy(true);
+    try {
       await fetchWithAuth('/properties', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
 
-      // reset form
-      setCode('');
-      setName('');
-      setAddress('');
-      setBaseMonthlyRent('');
-      setMonthlyUtilities('');
-      setDepositMonths('');
-      setIsPublished(true);
-
-      await loadProperties();
-    } catch (err: any) {
-      setError(err.message ?? 'Errore nella creazione immobile');
+      resetForm();
+      await loadAll();
+    } catch (e: any) {
+      setError(e?.message ?? 'Errore creazione property');
+    } finally {
+      setBusy(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const remove = async (id: string) => {
     setError(null);
+    setBusy(true);
     try {
-      await fetchWithAuth(`/properties/${id}`, {
-        method: 'DELETE',
-      });
-      await loadProperties();
-    } catch (err: any) {
-      setError(err.message ?? 'Errore nella cancellazione immobile');
+      await fetchWithAuth(`/properties/${id}`, { method: 'DELETE' });
+      setOpenDocsPropertyId((prev) => (prev === id ? null : prev));
+      await loadAll();
+    } catch (e: any) {
+      setError(e?.message ?? 'Errore eliminazione property');
+    } finally {
+      setBusy(false);
     }
   };
 
   return (
     <div className="min-h-screen bg-slate-100">
-      <div className="max-w-5xl mx-auto py-8 px-4 space-y-6">
-        <header className="flex flex-col gap-2 mb-4">
-          <h1 className="text-2xl font-semibold">
-            Immobili – Reboutique (Holder)
-          </h1>
-          <p className="text-sm text-slate-600">
-            Gestisci la lista delle proprietà.
-          </p>
+      <div className="max-w-6xl mx-auto py-8 px-4 space-y-6">
+        <header className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold">Properties</h1>
+            <p className="text-sm text-slate-600">Gestisci immobili e documenti.</p>
+          </div>
+
+          <button
+            onClick={loadAll}
+            disabled={busy}
+            className="text-sm border rounded px-3 py-1 hover:bg-slate-50 disabled:opacity-50"
+          >
+            Refresh
+          </button>
         </header>
 
-        <section className="bg-white shadow rounded-lg p-4 mb-6">
-          <h2 className="text-lg font-medium mb-3">
-            Crea nuovo immobile
-          </h2>
-          <form
-            onSubmit={handleCreate}
-            className="grid grid-cols-1 md:grid-cols-2 gap-4"
-          >
-            <input
-              type="text"
-              placeholder="Codice (es. Cerva-3A)"
-              className="border rounded px-3 py-2"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              required
-            />
-            <input
-              type="text"
-              placeholder="Nome immobile"
-              className="border rounded px-3 py-2"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-            <input
-              type="text"
-              placeholder="Indirizzo"
-              className="border rounded px-3 py-2 md:col-span-2"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-            />
+        {error && (
+          <div className="mb-2 bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded">
+            {error}
+          </div>
+        )}
 
-            <div className="flex flex-col">
-              <label className="text-sm mb-1">Tipo</label>
-              <select
-                className="border rounded px-3 py-2"
-                value={type}
-                onChange={(e) =>
-                  setType(e.target.value as 'APARTMENT' | 'ROOM' | 'BED')
-                }
-              >
-                <option value="APARTMENT">Appartamento</option>
-                <option value="ROOM">Stanza</option>
-                <option value="BED">Posto letto</option>
-              </select>
-            </div>
+        {/* CREATE FORM */}
+        <div className="bg-white rounded-xl shadow p-4 space-y-3">
+          <h2 className="font-medium">Nuova property</h2>
 
-            <input
-              type="number"
-              min="0"
-              step="1"
-              placeholder="Canone mensile base (€)"
-              className="border rounded px-3 py-2"
-              value={baseMonthlyRent}
-              onChange={(e) => setBaseMonthlyRent(e.target.value)}
-            />
-            <input
-              type="number"
-              min="0"
-              step="1"
-              placeholder="Utenze mensili (€)"
-              className="border rounded px-3 py-2"
-              value={monthlyUtilities}
-              onChange={(e) => setMonthlyUtilities(e.target.value)}
-            />
-            <input
-              type="number"
-              min="0"
-              step="1"
-              placeholder="Deposito (mesi)"
-              className="border rounded px-3 py-2"
-              value={depositMonths}
-              onChange={(e) => setDepositMonths(e.target.value)}
-            />
-
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={isPublished}
-                onChange={(e) => setIsPublished(e.target.checked)}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <Field label="Code" required>
+              <Input
+                value={form.code}
+                onChange={(e: any) => onChange('code', e.target.value)}
+                placeholder="Es: Cerva-3A"
+                disabled={busy}
               />
-              <span className="text-sm">Pubblicato (visibile ai tenants)</span>
-            </label>
+            </Field>
 
-            <div className="md:col-span-2">
-              <button
-                type="submit"
-                className="px-4 py-2 rounded bg-slate-800 text-white hover:bg-slate-700"
+            <Field label="Name" required>
+              <Input
+                value={form.name}
+                onChange={(e: any) => onChange('name', e.target.value)}
+                placeholder="Es: Cerva Stanza 3A"
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Type" required>
+              <Select
+                value={form.type}
+                onChange={(e: any) => onChange('type', e.target.value as PropertyType)}
+                disabled={busy}
               >
-                Salva immobile
-              </button>
-            </div>
-          </form>
+                <option value="APARTMENT">APARTMENT</option>
+                <option value="ROOM">ROOM</option>
+                <option value="BED">BED</option>
+              </Select>
+            </Field>
 
-          {error && (
-            <p className="text-red-500 text-sm mt-2">{error}</p>
-          )}
-        </section>
+            <Field label="Address">
+              <Input
+                value={form.address}
+                onChange={(e: any) => onChange('address', e.target.value)}
+                placeholder="Via..., Milano"
+                disabled={busy}
+              />
+            </Field>
 
-        <section className="bg-white shadow rounded-lg p-4">
-          <h2 className="text-lg font-medium mb-3">
-            Lista immobili
-          </h2>
+            <Field label="Apartment">
+              <Input
+                value={form.apartment}
+                onChange={(e: any) => onChange('apartment', e.target.value)}
+                placeholder="Es: 3"
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Room">
+              <Input
+                value={form.room}
+                onChange={(e: any) => onChange('room', e.target.value)}
+                placeholder="Es: A"
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Beds">
+              <Input
+                type="number"
+                value={form.beds}
+                onChange={(e: any) => onChange('beds', e.target.value)}
+                placeholder="0"
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Room size (m²)">
+              <Input
+                type="number"
+                value={form.roomSizeM2}
+                onChange={(e: any) => onChange('roomSizeM2', e.target.value)}
+                placeholder="12"
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="BuildingId">
+              <Input
+                value={form.buildingId}
+                onChange={(e: any) => onChange('buildingId', e.target.value)}
+                placeholder="(opzionale)"
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Floor">
+              <Input
+                type="number"
+                value={form.floor}
+                onChange={(e: any) => onChange('floor', e.target.value)}
+                placeholder="0"
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Unit number">
+              <Input
+                value={form.unitNumber}
+                onChange={(e: any) => onChange('unitNumber', e.target.value)}
+                placeholder="Es: 3A"
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Base monthly rent (€)">
+              <Input
+                type="number"
+                value={form.baseMonthlyRent}
+                onChange={(e: any) => onChange('baseMonthlyRent', e.target.value)}
+                placeholder="1000"
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Monthly utilities (€)">
+              <Input
+                type="number"
+                value={form.monthlyUtilities}
+                onChange={(e: any) => onChange('monthlyUtilities', e.target.value)}
+                placeholder="150"
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Deposit months">
+              <Input
+                type="number"
+                value={form.depositMonths}
+                onChange={(e: any) => onChange('depositMonths', e.target.value)}
+                placeholder="2"
+                disabled={busy}
+              />
+            </Field>
+
+            {/* CHECKBOXES */}
+            <Field label="Amenities">
+              <div className="grid grid-cols-2 gap-2">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={form.hasBalcony}
+                    onChange={(e) => onChange('hasBalcony', e.target.checked)}
+                    disabled={busy}
+                  />
+                  Balcony
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={form.hasDryer}
+                    onChange={(e) => onChange('hasDryer', e.target.checked)}
+                    disabled={busy}
+                  />
+                  Dryer
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={form.hasAC}
+                    onChange={(e) => onChange('hasAC', e.target.checked)}
+                    disabled={busy}
+                  />
+                  AC
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={form.hasHeating}
+                    onChange={(e) => onChange('hasHeating', e.target.checked)}
+                    disabled={busy}
+                  />
+                  Heating
+                </label>
+              </div>
+            </Field>
+
+            <Field label="Published">
+              <label className="flex items-center gap-2 h-10">
+                <input
+                  type="checkbox"
+                  checked={form.isPublished}
+                  onChange={(e) => onChange('isPublished', e.target.checked)}
+                  disabled={busy}
+                />
+                <span className="text-sm text-slate-700">Visibile ai tenants</span>
+              </label>
+            </Field>
+
+            <Field label="Website URL">
+              <Input
+                value={form.websiteUrl}
+                onChange={(e: any) => onChange('websiteUrl', e.target.value)}
+                placeholder="https://..."
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Airbnb URL">
+              <Input
+                value={form.airbnbUrl}
+                onChange={(e: any) => onChange('airbnbUrl', e.target.value)}
+                placeholder="https://..."
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Spotahome URL">
+              <Input
+                value={form.spotahomeUrl}
+                onChange={(e: any) => onChange('spotahomeUrl', e.target.value)}
+                placeholder="https://..."
+                disabled={busy}
+              />
+            </Field>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={create}
+              disabled={busy}
+              className="bg-slate-800 text-white px-4 py-2 rounded hover:bg-slate-700 disabled:opacity-50"
+            >
+              {busy ? 'Salvataggio...' : 'Create'}
+            </button>
+
+            <button
+              type="button"
+              onClick={resetForm}
+              disabled={busy}
+              className="border px-4 py-2 rounded hover:bg-slate-50 disabled:opacity-50"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+
+        {/* LIST */}
+        <div className="bg-white rounded-xl shadow p-4">
+          <h2 className="font-medium mb-3">Elenco</h2>
+
           {loading ? (
-            <p>Caricamento...</p>
-          ) : properties.length === 0 ? (
-            <p className="text-sm text-slate-500">
-              Nessun immobile presente.
-            </p>
+            <div>Caricamento...</div>
+          ) : items.length === 0 ? (
+            <div className="text-sm text-slate-500">Nessuna property.</div>
           ) : (
-            <div className="space-y-3">
-              {properties.map((p) => (
-                <div
-                  key={p.id}
-                  className="border rounded-lg p-3 flex flex-col md:flex-row md:items-center md:justify-between"
-                >
-                  <div>
-                    <div className="font-semibold">
-                      {p.code} – {p.name}
+            <div className="space-y-2">
+              {items.map((p) => {
+                const docsOpen = openDocsPropertyId === p.id;
+
+                return (
+                  <div key={p.id} className="border rounded-lg p-3">
+                    <div className="flex justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-semibold truncate">
+                          {p.code} – {p.name}
+                        </div>
+
+                        <div className="text-sm text-slate-600">
+                          {p.type}
+                          {p.address ? ` · ${p.address}` : ''}
+                        </div>
+
+                        <div className="text-xs text-slate-500 mt-1">
+                          Rent: {p.baseMonthlyRent ?? '-'} € · Utilities: {p.monthlyUtilities ?? '-'} € · Deposit: {p.depositMonths ?? '-'} mesi
+                          {typeof p.isPublished === 'boolean' ? ` · ${p.isPublished ? 'Pubblicato' : 'Non pubblicato'}` : ''}
+                        </div>
+
+                        <div className="text-xs text-slate-500 mt-1">
+                          {p.apartment ? `Apt: ${p.apartment}` : ''}
+                          {p.apartment && p.room ? ' · ' : ''}
+                          {p.room ? `Room: ${p.room}` : ''}
+                          {(p.apartment || p.room) && p.unitNumber ? ' · ' : ''}
+                          {p.unitNumber ? `Unit: ${p.unitNumber}` : ''}
+                          {(p.apartment || p.room || p.unitNumber) && (p.floor !== undefined) ? ' · ' : ''}
+                          {p.floor !== undefined ? `Floor: ${p.floor}` : ''}
+                        </div>
+
+                        <div className="text-[11px] text-slate-400 mt-1">id: {p.id}</div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setOpenDocsPropertyId((prev) => (prev === p.id ? null : p.id))}
+                          className="border rounded-md px-3 py-2 text-sm"
+                          disabled={busy}
+                        >
+                          {docsOpen ? 'Chiudi documenti' : 'Documenti'}
+                        </button>
+
+                        <button
+                          onClick={() => remove(p.id)}
+                          disabled={busy}
+                          className="text-sm text-red-600 hover:underline disabled:opacity-50"
+                        >
+                          Elimina
+                        </button>
+                      </div>
                     </div>
-                    <div className="text-sm text-slate-600">
-                      {p.address}
-                    </div>
-                    <div className="text-xs text-slate-500 mt-1">
-                      Tipo: {p.type} · Canone base:{' '}
-                      {p.baseMonthlyRent ?? '-'} € · Utenze:{' '}
-                      {p.monthlyUtilities ?? '-'} € · Deposito:{' '}
-                      {p.depositMonths ?? '-'} mesi
-                    </div>
-                    <div className="text-xs mt-1">
-                      Stato:{' '}
-                      {p.isPublished ? 'Pubblicato' : 'Non pubblicato'}
-                    </div>
+
+                    {docsOpen && (
+                      <div className="mt-3">
+                        <EntityDocuments
+                          entityKind="properties"
+                          entityId={p.id}
+                          label={`Documenti property (${propertyLabel.get(p.id) ?? p.id})`}
+                        />
+                      </div>
+                    )}
                   </div>
-                  <div className="mt-2 md:mt-0">
-                    <button
-                      onClick={() => handleDelete(p.id)}
-                      className="text-sm text-red-600 hover:underline"
-                    >
-                      Elimina
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
-        </section>
+        </div>
       </div>
     </div>
   );

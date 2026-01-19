@@ -1,21 +1,23 @@
 'use client';
 
-import { useEffect, useState, FormEvent } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { fetchWithAuth } from '@/lib/apiClient';
 import EntityDocuments from '@/components/EntityDocuments';
+import { Field, Input, Select } from '@/components/form/Field';
 
 type TenantStatus = 'CURRENT' | 'INCOMING' | 'PAST' | 'PENDING';
+type TenantGender = 'M' | 'F' | 'OTHER';
 
 type Tenant = {
   id: string;
-  firstName: string;
-  lastName: string;
+  firstName?: string;
+  lastName?: string;
   email?: string;
   phone?: string;
   birthday?: string;
   nationality?: string;
   euCitizen?: boolean;
-  gender?: 'M' | 'F' | 'OTHER';
+  gender?: TenantGender;
   address?: string;
   taxCode?: string;
   documentType?: string;
@@ -25,78 +27,125 @@ type Tenant = {
   status?: TenantStatus;
 };
 
+type CreateTenantForm = {
+  firstName: string;
+  lastName: string;
+
+  email: string;
+  phone: string;
+
+  birthday: string;
+  nationality: string;
+
+  euCitizen: '' | 'yes' | 'no';
+  gender: '' | TenantGender;
+
+  school: string;
+  status: TenantStatus;
+
+  notes: string;
+};
+
+const cleanStr = (s: string) => s.trim();
+
 export default function TenantsPage() {
-  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [items, setItems] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // NEW: quale tenant ha il pannello documenti aperto
+  // quale tenant ha documenti aperti
   const [openDocsTenantId, setOpenDocsTenantId] = useState<string | null>(null);
 
-  // form state
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [birthday, setBirthday] = useState('');
-  const [nationality, setNationality] = useState('');
-  const [euCitizen, setEuCitizen] = useState<boolean | null>(null);
-  const [gender, setGender] = useState<'M' | 'F' | 'OTHER' | ''>('');
-  const [school, setSchool] = useState('');
-  const [status, setStatus] = useState<TenantStatus>('CURRENT');
-  const [notes, setNotes] = useState('');
+  const [form, setForm] = useState<CreateTenantForm>({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    birthday: '',
+    nationality: '',
+    euCitizen: '',
+    gender: '',
+    school: '',
+    status: 'CURRENT',
+    notes: '',
+  });
 
-  const loadTenants = async () => {
+  const onChange = (key: keyof CreateTenantForm, value: string) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const tenantLabel = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const t of items) {
+      const n = `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim();
+      m.set(t.id, n || t.id);
+    }
+    return m;
+  }, [items]);
+
+  const loadAll = async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = (await fetchWithAuth('/tenants')) as Tenant[];
-      setTenants(Array.isArray(data) ? data : []);
-    } catch (err: any) {
-      setError(err?.message ?? 'Errore nel caricamento inquilini');
+      const res = await fetchWithAuth('/tenants');
+      setItems(Array.isArray(res) ? (res as Tenant[]) : []);
+    } catch (e: any) {
+      setError(e?.message ?? 'Errore caricamento tenants');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadTenants();
+    loadAll();
   }, []);
 
   const resetForm = () => {
-    setFirstName('');
-    setLastName('');
-    setEmail('');
-    setPhone('');
-    setBirthday('');
-    setNationality('');
-    setSchool('');
-    setStatus('CURRENT');
-    setEuCitizen(null);
-    setGender('');
-    setNotes('');
+    setForm({
+      firstName: '',
+      lastName: '',
+      email: '',
+      phone: '',
+      birthday: '',
+      nationality: '',
+      euCitizen: '',
+      gender: '',
+      school: '',
+      status: 'CURRENT',
+      notes: '',
+    });
   };
 
-  const handleCreate = async (e: FormEvent) => {
-    e.preventDefault();
+  const create = async () => {
     setError(null);
 
+    if (!cleanStr(form.firstName)) return setError('Nome obbligatorio');
+    if (!cleanStr(form.lastName)) return setError('Cognome obbligatorio');
+
+    const body: any = {
+      firstName: cleanStr(form.firstName),
+      lastName: cleanStr(form.lastName),
+
+      email: cleanStr(form.email) || undefined,
+      phone: cleanStr(form.phone) || undefined,
+
+      birthday: form.birthday || undefined,
+      nationality: cleanStr(form.nationality) || undefined,
+
+      school: cleanStr(form.school) || undefined,
+      status: form.status,
+
+      notes: cleanStr(form.notes) || undefined,
+    };
+
+    if (form.euCitizen === 'yes') body.euCitizen = true;
+    if (form.euCitizen === 'no') body.euCitizen = false;
+
+    if (form.gender) body.gender = form.gender;
+
+    setBusy(true);
     try {
-      const body: any = {
-        firstName,
-        lastName,
-        email: email || undefined,
-        phone: phone || undefined,
-        birthday: birthday || undefined,
-        nationality: nationality || undefined,
-        school: school || undefined,
-        status,
-        notes: notes || undefined,
-      };
-
-      if (euCitizen !== null) body.euCitizen = euCitizen;
-      if (gender) body.gender = gender;
-
       await fetchWithAuth('/tenants', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -104,228 +153,244 @@ export default function TenantsPage() {
       });
 
       resetForm();
-      await loadTenants();
-    } catch (err: any) {
-      setError(err?.message ?? 'Errore nella creazione tenant');
+      await loadAll();
+    } catch (e: any) {
+      setError(e?.message ?? 'Errore creazione tenant');
+    } finally {
+      setBusy(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const remove = async (id: string) => {
     setError(null);
+    setBusy(true);
     try {
       await fetchWithAuth(`/tenants/${id}`, { method: 'DELETE' });
-      // se sto mostrando documenti di questo tenant, chiudo
       setOpenDocsTenantId((prev) => (prev === id ? null : prev));
-      await loadTenants();
-    } catch (err: any) {
-      setError(err?.message ?? 'Errore nella cancellazione tenant');
+      await loadAll();
+    } catch (e: any) {
+      setError(e?.message ?? 'Errore eliminazione tenant');
+    } finally {
+      setBusy(false);
     }
   };
 
   return (
     <div className="min-h-screen bg-slate-100">
-      <div className="max-w-6xl mx-auto py-8 px-4 space-y-6">
-        <header className="flex flex-col gap-2 mb-4">
-          <h1 className="text-2xl font-semibold">Inquilini – Reboutique (Holder)</h1>
-          <p className="text-sm text-slate-600">
-            Gestisci gli inquilini (current, incoming, past, pending).
-          </p>
+      <div className="max-w-5xl mx-auto py-8 px-4 space-y-6">
+        <header className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold">Tenants</h1>
+            <p className="text-sm text-slate-600">Gestisci anagrafica inquilini e documenti.</p>
+          </div>
+
+          <button
+            onClick={loadAll}
+            disabled={busy}
+            className="text-sm border rounded px-3 py-1 hover:bg-slate-50 disabled:opacity-50"
+          >
+            Refresh
+          </button>
         </header>
 
-        {/* FORM CREAZIONE TENANT */}
-        <section className="bg-white shadow rounded-lg p-4 mb-6">
-          <h2 className="text-lg font-medium mb-3">Crea nuovo inquilino</h2>
+        {error && (
+          <div className="mb-2 bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded">
+            {error}
+          </div>
+        )}
 
-          <form onSubmit={handleCreate} className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <input
-              type="text"
-              placeholder="Nome"
-              className="border rounded px-3 py-2"
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              required
-            />
-            <input
-              type="text"
-              placeholder="Cognome"
-              className="border rounded px-3 py-2"
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              required
-            />
-            <input
-              type="email"
-              placeholder="Email"
-              className="border rounded px-3 py-2"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
+        {/* CREATE FORM */}
+        <div className="bg-white rounded-xl shadow p-4 space-y-3">
+          <h2 className="font-medium">Nuovo tenant</h2>
 
-            <input
-              type="text"
-              placeholder="Telefono"
-              className="border rounded px-3 py-2"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
-
-            <div className="flex flex-col">
-              <label className="text-sm mb-1">Data di nascita</label>
-              {/* ✅ date picker */}
-              <input
-                type="date"
-                className="border rounded px-3 py-2"
-                value={birthday}
-                onChange={(e) => setBirthday(e.target.value)}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Field label="Nome" required>
+              <Input
+                value={form.firstName}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('firstName', e.target.value)}
+                disabled={busy}
+                placeholder="Marco"
               />
-            </div>
+            </Field>
 
-            <input
-              type="text"
-              placeholder="Nazionalità"
-              className="border rounded px-3 py-2"
-              value={nationality}
-              onChange={(e) => setNationality(e.target.value)}
-            />
+            <Field label="Cognome" required>
+              <Input
+                value={form.lastName}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('lastName', e.target.value)}
+                disabled={busy}
+                placeholder="Rossi"
+              />
+            </Field>
 
-            <div className="flex flex-col">
-              <label className="text-sm mb-1">Cittadino UE</label>
-              <select
-                className="border rounded px-3 py-2"
-                value={euCitizen === null ? '' : euCitizen ? 'yes' : 'no'}
-                onChange={(e) => {
-                  if (e.target.value === '') setEuCitizen(null);
-                  else setEuCitizen(e.target.value === 'yes');
-                }}
+            <Field label="Email">
+              <Input
+                type="email"
+                value={form.email}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('email', e.target.value)}
+                disabled={busy}
+                placeholder="marco@email.com"
+              />
+            </Field>
+
+            <Field label="Telefono">
+              <Input
+                value={form.phone}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('phone', e.target.value)}
+                disabled={busy}
+                placeholder="+39..."
+              />
+            </Field>
+
+            <Field label="Data di nascita">
+              <Input
+                type="date"
+                value={form.birthday}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('birthday', e.target.value)}
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Nazionalità">
+              <Input
+                value={form.nationality}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('nationality', e.target.value)}
+                disabled={busy}
+                placeholder="IT"
+              />
+            </Field>
+
+            <Field label="Cittadino UE">
+              <Select
+                value={form.euCitizen}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => onChange('euCitizen', e.target.value)}
+                disabled={busy}
               >
                 <option value="">Non specificato</option>
                 <option value="yes">Sì</option>
                 <option value="no">No</option>
-              </select>
-            </div>
+              </Select>
+            </Field>
 
-            <div className="flex flex-col">
-              <label className="text-sm mb-1">Genere</label>
-              <select
-                className="border rounded px-3 py-2"
-                value={gender}
-                onChange={(e) => setGender(e.target.value as 'M' | 'F' | 'OTHER' | '')}
+            <Field label="Genere">
+              <Select
+                value={form.gender}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => onChange('gender', e.target.value)}
+                disabled={busy}
               >
                 <option value="">Non specificato</option>
                 <option value="M">M</option>
                 <option value="F">F</option>
                 <option value="OTHER">Altro</option>
-              </select>
-            </div>
+              </Select>
+            </Field>
 
-            <input
-              type="text"
-              placeholder="Scuola (IED, NABA, ...)"
-              className="border rounded px-3 py-2"
-              value={school}
-              onChange={(e) => setSchool(e.target.value)}
-            />
+            <Field label="Scuola">
+              <Input
+                value={form.school}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('school', e.target.value)}
+                disabled={busy}
+                placeholder="IED / NABA / ..."
+              />
+            </Field>
 
-            <div className="flex flex-col">
-              <label className="text-sm mb-1">Stato</label>
-              <select
-                className="border rounded px-3 py-2"
-                value={status}
-                onChange={(e) => setStatus(e.target.value as TenantStatus)}
+            <Field label="Stato" required>
+              <Select
+                value={form.status}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => onChange('status', e.target.value)}
+                disabled={busy}
               >
-                <option value="CURRENT">Current</option>
-                <option value="INCOMING">Incoming</option>
-                <option value="PAST">Past</option>
-                <option value="PENDING">Pending</option>
-              </select>
+                <option value="CURRENT">CURRENT</option>
+                <option value="INCOMING">INCOMING</option>
+                <option value="PAST">PAST</option>
+                <option value="PENDING">PENDING</option>
+              </Select>
+            </Field>
+
+            <div className="md:col-span-2">
+              <Field label="Note">
+                <Input
+                  value={form.notes}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('notes', e.target.value)}
+                  disabled={busy}
+                  placeholder="Note interne..."
+                />
+              </Field>
             </div>
-
-            <textarea
-              placeholder="Note"
-              className="border rounded px-3 py-2 md:col-span-3"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-            />
-
-            <div className="md:col-span-3 flex items-center gap-3">
-              <button
-                type="submit"
-                className="px-4 py-2 rounded bg-slate-800 text-white hover:bg-slate-700"
-              >
-                Salva inquilino
-              </button>
-              <button
-                type="button"
-                onClick={resetForm}
-                className="px-4 py-2 rounded border hover:bg-slate-50"
-              >
-                Reset
-              </button>
-            </div>
-          </form>
-
-          {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
-        </section>
-
-        {/* LISTA TENANTS */}
-        <section className="bg-white shadow rounded-lg p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-medium">Lista inquilini</h2>
-            <button
-              onClick={loadTenants}
-              className="text-sm border rounded px-3 py-1 hover:bg-slate-50"
-            >
-              Refresh
-            </button>
           </div>
 
+          <div className="flex items-center gap-3">
+            <button
+              onClick={create}
+              disabled={busy}
+              className="bg-slate-800 text-white px-4 py-2 rounded hover:bg-slate-700 disabled:opacity-50"
+            >
+              {busy ? 'Salvataggio...' : 'Create'}
+            </button>
+
+            <button
+              type="button"
+              onClick={resetForm}
+              disabled={busy}
+              className="border px-4 py-2 rounded hover:bg-slate-50 disabled:opacity-50"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+
+        {/* LIST */}
+        <div className="bg-white rounded-xl shadow p-4">
+          <h2 className="font-medium mb-3">Elenco</h2>
+
           {loading ? (
-            <p>Caricamento...</p>
-          ) : tenants.length === 0 ? (
-            <p className="text-sm text-slate-500">Nessun inquilino presente.</p>
+            <div>Caricamento...</div>
+          ) : items.length === 0 ? (
+            <div className="text-sm text-slate-500">Nessun tenant.</div>
           ) : (
-            <div className="space-y-3">
-              {tenants.map((t) => {
+            <div className="space-y-2">
+              {items.map((t) => {
                 const docsOpen = openDocsTenantId === t.id;
+                const name = `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim() || t.id;
 
                 return (
                   <div key={t.id} className="border rounded-lg p-3">
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                      <div>
-                        <div className="font-semibold">
-                          {t.firstName} {t.lastName}{' '}
-                          {t.school && (
-                            <span className="text-xs text-slate-500">· {t.school}</span>
-                          )}
-                        </div>
+                    <div className="flex justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-semibold truncate">{name}</div>
+
                         <div className="text-sm text-slate-600">
-                          {t.email && <span>{t.email}</span>}
-                          {t.email && t.phone && <span> · </span>}
-                          {t.phone && <span>{t.phone}</span>}
+                          {(t.email ? t.email : '')}
+                          {t.email && t.phone ? ' · ' : ''}
+                          {(t.phone ? t.phone : '')}
+                          {t.school ? ` · ${t.school}` : ''}
                         </div>
+
                         <div className="text-xs text-slate-500 mt-1">
-                          Stato: {t.status ?? 'CURRENT'}{' '}
-                          {t.nationality && `· ${t.nationality}`}{' '}
-                          {typeof t.euCitizen === 'boolean' &&
-                            `· UE: ${t.euCitizen ? 'Sì' : 'No'}`}
+                          Status: {t.status ?? 'CURRENT'}
+                          {t.nationality ? ` · ${t.nationality}` : ''}
+                          {typeof t.euCitizen === 'boolean' ? ` · UE: ${t.euCitizen ? 'Sì' : 'No'}` : ''}
                           {t.birthday ? ` · Nascita: ${t.birthday}` : ''}
+                          {t.gender ? ` · Genere: ${t.gender}` : ''}
                         </div>
-                        {t.notes && (
-                          <div className="text-xs text-slate-500 mt-1">Note: {t.notes}</div>
-                        )}
+
+                        {t.notes && <div className="text-xs text-slate-500 mt-1">Note: {t.notes}</div>}
+
+                        <div className="text-[11px] text-slate-400 mt-1">id: {t.id}</div>
                       </div>
 
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => setOpenDocsTenantId((prev) => (prev === t.id ? null : t.id))}
                           className="border rounded-md px-3 py-2 text-sm"
+                          disabled={busy}
                         >
                           {docsOpen ? 'Chiudi documenti' : 'Documenti'}
                         </button>
 
                         <button
-                          onClick={() => handleDelete(t.id)}
-                          className="text-sm text-red-600 hover:underline"
+                          onClick={() => remove(t.id)}
+                          disabled={busy}
+                          className="text-sm text-red-600 hover:underline disabled:opacity-50"
                         >
                           Elimina
                         </button>
@@ -337,7 +402,7 @@ export default function TenantsPage() {
                         <EntityDocuments
                           entityKind="tenants"
                           entityId={t.id}
-                          label={`Documenti inquilino (${t.firstName} ${t.lastName})`}
+                          label={`Documenti tenant (${tenantLabel.get(t.id) ?? t.id})`}
                         />
                       </div>
                     )}
@@ -346,7 +411,7 @@ export default function TenantsPage() {
               })}
             </div>
           )}
-        </section>
+        </div>
       </div>
     </div>
   );

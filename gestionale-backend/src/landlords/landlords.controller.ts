@@ -15,6 +15,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { CreateLandlordDto } from './dto/create-landlord.dto';
 import { UpdateLandlordDto } from './dto/update-landlord.dto';
+import { CreateLandlordFileDto } from './dto/create-landlord-file.dto';
 
 @Controller('landlords')
 @UseGuards(FirebaseAuthGuard, RolesGuard)
@@ -26,42 +27,63 @@ export class LandlordsController {
     return u.holderId ?? u.uid;
   }
 
+  // -------------------------
+  // CRUD
+  // -------------------------
+
   @Post()
   @Roles('HOLDER')
   create(@Req() req: any, @Body() dto: CreateLandlordDto) {
-    const holderId = this.getHolderId(req);
-    return this.landlordsService.create(holderId, dto);
+    return this.landlordsService.create(this.getHolderId(req), dto);
   }
 
   @Get()
   @Roles('HOLDER')
   findAll(@Req() req: any) {
-    const holderId = this.getHolderId(req);
-    return this.landlordsService.findAll(holderId);
+    return this.landlordsService.findAll(this.getHolderId(req));
   }
 
   @Get(':id')
   @Roles('HOLDER')
   findOne(@Req() req: any, @Param('id') id: string) {
-    const holderId = this.getHolderId(req);
-    return this.landlordsService.findOne(holderId, id);
+    return this.landlordsService.findOne(this.getHolderId(req), id);
   }
 
   @Patch(':id')
   @Roles('HOLDER')
-  update(
-    @Req() req: any,
-    @Param('id') id: string,
-    @Body() dto: UpdateLandlordDto,
-  ) {
-    const holderId = this.getHolderId(req);
-    return this.landlordsService.update(holderId, id, dto);
+  update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateLandlordDto) {
+    return this.landlordsService.update(this.getHolderId(req), id, dto);
   }
 
   @Delete(':id')
   @Roles('HOLDER')
   remove(@Req() req: any, @Param('id') id: string) {
-    const holderId = this.getHolderId(req);
-    return this.landlordsService.remove(holderId, id);
+    return this.landlordsService.remove(this.getHolderId(req), id);
+  }
+
+  // -------------------------
+  // FILES (documenti)
+  // -------------------------
+
+  @Post(':id/files')
+  @Roles('HOLDER')
+  addFile(@Req() req: any, @Param('id') id: string, @Body() dto: CreateLandlordFileDto) {
+    return this.landlordsService.addFile(this.getHolderId(req), id, dto);
+  }
+
+  @Get(':id/files')
+  @Roles('HOLDER')
+  listFiles(@Req() req: any, @Param('id') id: string) {
+    return this.landlordsService.listFiles(this.getHolderId(req), id);
+  }
+
+  @Delete(':id/files/:fileId')
+  @Roles('HOLDER')
+  removeFile(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('fileId') fileId: string,
+  ) {
+    return this.landlordsService.removeFile(this.getHolderId(req), id, fileId);
   }
 }
