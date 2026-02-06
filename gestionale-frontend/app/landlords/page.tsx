@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { fetchWithAuth } from '@/lib/apiClient';
 import EntityDocuments from '@/components/EntityDocuments';
 import { Field, Input, Select } from '@/components/form/Field';
@@ -8,67 +8,62 @@ import { Field, Input, Select } from '@/components/form/Field';
 type Landlord = {
   id: string;
 
-  firstName?: string;
-  lastName?: string;
+  name?: string;
 
   email?: string;
   phone?: string;
 
-  companyName?: string;
+  taxCode?: string;
   vatNumber?: string;
 
   address?: string;
   notes?: string;
+
+  status?: 'ACTIVE' | 'INACTIVE';
 };
 
 type CreateLandlordForm = {
-  firstName: string;
-  lastName: string;
+  name: string;
 
   email: string;
   phone: string;
 
-  companyName: string;
+  taxCode: string;
   vatNumber: string;
 
   address: string;
   notes: string;
+
+  status: 'ACTIVE' | 'INACTIVE';
 };
 
 const cleanStr = (s: string) => s.trim();
 
 export default function LandlordsPage() {
   const [items, setItems] = useState<Landlord[]>([]);
-
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // quale landlord ha documenti aperti
   const [openDocsId, setOpenDocsId] = useState<string | null>(null);
 
   const [form, setForm] = useState<CreateLandlordForm>({
-    firstName: '',
-    lastName: '',
+    name: '',
     email: '',
     phone: '',
-    companyName: '',
+    taxCode: '',
     vatNumber: '',
     address: '',
     notes: '',
+    status: 'ACTIVE',
   });
 
-  const onChange = (key: keyof CreateLandlordForm, value: string) => {
+  const onChange = (key: keyof CreateLandlordForm, value: any) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const labelName = useMemo(() => {
-    return (x: Landlord) => {
-      const n = `${x.firstName ?? ''} ${x.lastName ?? ''}`.trim();
-      if (n) return n;
-      if (x.companyName) return x.companyName;
-      return x.id;
-    };
+  const label = useMemo(() => {
+    return (l: Landlord) => (l.name?.trim() ? l.name.trim() : l.id);
   }, []);
 
   const loadAll = async () => {
@@ -90,36 +85,35 @@ export default function LandlordsPage() {
 
   const resetForm = () => {
     setForm({
-      firstName: '',
-      lastName: '',
+      name: '',
       email: '',
       phone: '',
-      companyName: '',
+      taxCode: '',
       vatNumber: '',
       address: '',
       notes: '',
+      status: 'ACTIVE',
     });
   };
 
   const create = async () => {
     setError(null);
 
-    // Se nel tuo DTO firstName/lastName sono required, lasciali required qui:
-    if (!cleanStr(form.firstName)) return setError('First name obbligatorio');
-    if (!cleanStr(form.lastName)) return setError('Last name obbligatorio');
+    if (!cleanStr(form.name)) return setError('Nome obbligatorio');
 
     const body: any = {
-      firstName: cleanStr(form.firstName),
-      lastName: cleanStr(form.lastName),
+      name: cleanStr(form.name),
 
       email: cleanStr(form.email) || undefined,
       phone: cleanStr(form.phone) || undefined,
 
-      companyName: cleanStr(form.companyName) || undefined,
+      taxCode: cleanStr(form.taxCode) || undefined,
       vatNumber: cleanStr(form.vatNumber) || undefined,
 
       address: cleanStr(form.address) || undefined,
       notes: cleanStr(form.notes) || undefined,
+
+      status: form.status || 'ACTIVE',
     };
 
     setBusy(true);
@@ -155,11 +149,11 @@ export default function LandlordsPage() {
 
   return (
     <div className="min-h-screen bg-slate-100">
-      <div className="max-w-5xl mx-auto py-8 px-4 space-y-6">
+      <div className="max-w-6xl mx-auto py-8 px-4 space-y-6">
         <header className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold">Landlords</h1>
-            <p className="text-sm text-slate-600">Gestisci proprietari / locatori.</p>
+            <p className="text-sm text-slate-600">Gestisci proprietari e documenti.</p>
           </div>
 
           <button
@@ -181,77 +175,76 @@ export default function LandlordsPage() {
         <div className="bg-white rounded-xl shadow p-4 space-y-3">
           <h2 className="font-medium">Nuovo landlord</h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Field label="First name" required>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <Field label="Nome" required>
               <Input
-                value={form.firstName}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('firstName', e.target.value)}
-                placeholder="Mario"
+                value={form.name}
+                onChange={(e: any) => onChange('name', e.target.value)}
                 disabled={busy}
+                placeholder="Ragione sociale / Nome"
               />
             </Field>
 
-            <Field label="Last name" required>
-              <Input
-                value={form.lastName}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('lastName', e.target.value)}
-                placeholder="Rossi"
+            <Field label="Status" required>
+              <Select
+                value={form.status}
+                onChange={(e: any) => onChange('status', e.target.value)}
                 disabled={busy}
-              />
+              >
+                <option value="ACTIVE">ACTIVE</option>
+                <option value="INACTIVE">INACTIVE</option>
+              </Select>
             </Field>
+
+            <div className="hidden md:block" />
 
             <Field label="Email">
               <Input
-                type="email"
                 value={form.email}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('email', e.target.value)}
-                placeholder="mario@..."
+                onChange={(e: any) => onChange('email', e.target.value)}
                 disabled={busy}
               />
             </Field>
 
-            <Field label="Phone">
+            <Field label="Telefono">
               <Input
                 value={form.phone}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('phone', e.target.value)}
-                placeholder="+39..."
+                onChange={(e: any) => onChange('phone', e.target.value)}
                 disabled={busy}
               />
             </Field>
 
-            <Field label="Company name">
+            <Field label="Codice fiscale">
               <Input
-                value={form.companyName}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('companyName', e.target.value)}
-                placeholder="Rossi Srl"
+                value={form.taxCode}
+                onChange={(e: any) => onChange('taxCode', e.target.value)}
                 disabled={busy}
               />
             </Field>
 
-            <Field label="VAT number">
+            <Field label="P.IVA">
               <Input
                 value={form.vatNumber}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('vatNumber', e.target.value)}
-                placeholder="IT..."
+                onChange={(e: any) => onChange('vatNumber', e.target.value)}
                 disabled={busy}
               />
             </Field>
 
-            <Field label="Address">
+            <Field label="Indirizzo" className="md:col-span-2">
               <Input
                 value={form.address}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('address', e.target.value)}
-                placeholder="Via ..."
+                onChange={(e: any) => onChange('address', e.target.value)}
                 disabled={busy}
+                placeholder="Via..."
               />
             </Field>
 
-            <Field label="Notes">
+            <Field label="Note" className="md:col-span-3">
               <Input
                 value={form.notes}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('notes', e.target.value)}
-                placeholder="Note interne..."
+                onChange={(e: any) => onChange('notes', e.target.value)}
                 disabled={busy}
+                placeholder="Note interne..."
               />
             </Field>
           </div>
@@ -286,40 +279,35 @@ export default function LandlordsPage() {
             <div className="text-sm text-slate-500">Nessun landlord.</div>
           ) : (
             <div className="space-y-2">
-              {items.map((x) => {
-                const docsOpen = openDocsId === x.id;
+              {items.map((l) => {
+                const docsOpen = openDocsId === l.id;
 
                 return (
-                  <div key={x.id} className="border rounded-lg p-3">
+                  <div key={l.id} className="border rounded-lg p-3">
                     <div className="flex justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="font-semibold truncate">
-                          {labelName(x)}
-                          {x.companyName ? ` · ${x.companyName}` : ''}
-                        </div>
+                        <div className="font-semibold truncate">{label(l)}</div>
 
                         <div className="text-sm text-slate-600">
-                          {x.email ? x.email : ''}
-                          {x.email && x.phone ? ' · ' : ''}
-                          {x.phone ? x.phone : ''}
+                          {l.email ? l.email : '-'}
+                          {l.phone ? ` · ${l.phone}` : ''}
                         </div>
 
                         <div className="text-xs text-slate-500 mt-1">
-                          {x.vatNumber ? `VAT: ${x.vatNumber}` : ''}
-                          {x.vatNumber && x.address ? ' · ' : ''}
-                          {x.address ? x.address : ''}
+                          status: {l.status ?? 'ACTIVE'}
+                          {l.taxCode ? ` · cf: ${l.taxCode}` : ''}
+                          {l.vatNumber ? ` · piva: ${l.vatNumber}` : ''}
                         </div>
 
-                        {x.notes && (
-                          <div className="text-xs text-slate-500 mt-1">Note: {x.notes}</div>
-                        )}
+                        {l.address && <div className="text-xs text-slate-500 mt-1">addr: {l.address}</div>}
+                        {l.notes && <div className="text-xs text-slate-500 mt-1">note: {l.notes}</div>}
 
-                        <div className="text-[11px] text-slate-400 mt-1">id: {x.id}</div>
+                        <div className="text-[11px] text-slate-400 mt-1">id: {l.id}</div>
                       </div>
 
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => setOpenDocsId((prev) => (prev === x.id ? null : x.id))}
+                          onClick={() => setOpenDocsId((prev) => (prev === l.id ? null : l.id))}
                           className="border rounded-md px-3 py-2 text-sm"
                           disabled={busy}
                         >
@@ -327,7 +315,7 @@ export default function LandlordsPage() {
                         </button>
 
                         <button
-                          onClick={() => remove(x.id)}
+                          onClick={() => remove(l.id)}
                           disabled={busy}
                           className="text-sm text-red-600 hover:underline disabled:opacity-50"
                         >
@@ -340,8 +328,8 @@ export default function LandlordsPage() {
                       <div className="mt-3">
                         <EntityDocuments
                           entityKind="landlords"
-                          entityId={x.id}
-                          label={`Documenti landlord (${labelName(x)})`}
+                          entityId={l.id}
+                          label={`Documenti landlord (${label(l)})`}
                         />
                       </div>
                     )}

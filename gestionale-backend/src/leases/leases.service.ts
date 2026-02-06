@@ -25,6 +25,12 @@ type LeaseDoc = {
   adminFeeAmount?: number;
   otherFeesAmount?: number;
 
+  bookingCostAmount?: number;
+  bookingCostDate?: Date;
+
+  registrationTaxAmount?: number;
+  registrationTaxDate?: Date;
+
   dueDayOfMonth?: number;
 
   createdAt: Date;
@@ -43,25 +49,70 @@ export class LeasesService {
     return cleaned;
   }
 
+  // ---------------------------------------------------------
+  // ✅ DATE PARSING ROBUSTO (string | Date | Firestore Timestamp)
+  // ---------------------------------------------------------
+
+  /**
+   * Accetta:
+   * - "YYYY-MM-DD" / ISO string
+   * - Date
+   * - Firestore Timestamp (admin.firestore.Timestamp) con toDate()
+   * - oggetto compat {_seconds, _nanoseconds}
+   */
+  private parseAnyDateLike(value: any): Date | undefined {
+    if (value === null || value === undefined) return undefined;
+
+    // già Date
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? undefined : value;
+    }
+
+    // stringa
+    if (typeof value === 'string') {
+      const s = value.trim();
+      if (!s) return undefined;
+
+      // se è "YYYY-MM-DD", lo interpreto in UTC per evitare shift timezone
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        const d = new Date(s + 'T00:00:00.000Z');
+        return Number.isNaN(d.getTime()) ? undefined : d;
+      }
+
+      const d = new Date(s);
+      return Number.isNaN(d.getTime()) ? undefined : d;
+    }
+
+    // Firestore Timestamp con toDate()
+    if (typeof value === 'object' && typeof value.toDate === 'function') {
+      const d = value.toDate();
+      if (d instanceof Date && !Number.isNaN(d.getTime())) return d;
+      return undefined;
+    }
+
+    // compat {_seconds}
+    if (typeof value === 'object' && typeof value._seconds === 'number') {
+      const d = new Date(value._seconds * 1000);
+      return Number.isNaN(d.getTime()) ? undefined : d;
+    }
+
+    return undefined;
+  }
+
+  private requireDate(value: any, fieldName: string): Date {
+    const d = this.parseAnyDateLike(value);
+    if (!d) throw new BadRequestException(`${fieldName} is missing or invalid`);
+    return d;
+  }
+
   private isoDate(d: Date): string {
+    // d qui deve essere valida
     return d.toISOString().slice(0, 10);
   }
 
-  /**
-   * ✅ Converte in Date gestendo Firestore Timestamp (admin SDK) e string
-   */
-  private toJsDate(v: any): Date {
-    if (!v) return new Date(NaN);
-
-    // Firestore Timestamp (admin): ha toDate()
-    if (typeof v?.toDate === 'function') return v.toDate();
-
-    // già Date
-    if (v instanceof Date) return v;
-
-    // string / number
-    return new Date(v);
-  }
+  // ---------------------------------------------------------
+  // Firestore collections
+  // ---------------------------------------------------------
 
   private leasesCollection(holderId: string) {
     return this.firebaseService.firestore
@@ -108,6 +159,9 @@ export class LeasesService {
       .doc(landlordId);
   }
 
+  // -------------------------
+  // FILES (leases)
+  // -------------------------
   private leaseFilesCollection(holderId: string, leaseId: string) {
     return this.leasesCollection(holderId).doc(leaseId).collection('files');
   }
@@ -118,11 +172,7 @@ export class LeasesService {
     if (!leaseSnap.exists) throw new NotFoundException(`Lease ${leaseId} not found`);
 
     const filesCol = this.leaseFilesCollection(holderId, leaseId);
-
-    const data = {
-      ...dto,
-      createdAt: new Date(),
-    };
+    const data = { ...dto, createdAt: new Date() };
 
     const ref = await filesCol.add(data);
     const snap = await ref.get();
@@ -139,13 +189,11 @@ export class LeasesService {
     const filesCol = this.leaseFilesCollection(holderId, leaseId);
     const ref = filesCol.doc(fileId);
     const doc = await ref.get();
-
     if (!doc.exists) throw new NotFoundException(`File ${fileId} not found`);
 
     const data = doc.data() as any;
     const storagePath: string | undefined = data?.storagePath ?? data?.path;
 
-    // delete fisico storage
     if (storagePath) {
       try {
         const bucket = admin.storage().bucket();
@@ -155,30 +203,24 @@ export class LeasesService {
       }
     }
 
-    // delete metadata firestore
     await ref.delete();
     return { success: true };
   }
 
-  // ---- CRUD leases ----
+  // -------------------------
+  // CRUD leases
+  // -------------------------
 
   async create(holderId: string, dto: CreateLeaseDto) {
-    // 1) property must exist
     const propSnap = await this.propertiesDoc(holderId, dto.propertyId).get();
-    if (!propSnap.exists) {
-      throw new NotFoundException(`Property ${dto.propertyId} not found`);
-    }
+    if (!propSnap.exists) throw new NotFoundException(`Property ${dto.propertyId} not found`);
     const propData = propSnap.data() as any;
 
-    // 2) type-specific checks
     if (dto.type === LeaseType.TENANT) {
-      if (!dto.tenantId) {
-        throw new BadRequestException('tenantId is required for TENANT lease');
-      }
+      if (!dto.tenantId) throw new BadRequestException('tenantId is required for TENANT lease');
       const tenantSnap = await this.tenantsDoc(holderId, dto.tenantId).get();
       if (!tenantSnap.exists) throw new NotFoundException(`Tenant ${dto.tenantId} not found`);
 
-      // optional sanity check: if gross & bills present, net should match
       if (dto.monthlyRentWithBills !== undefined && dto.billsIncludedAmount !== undefined) {
         const net = dto.monthlyRentWithBills - dto.billsIncludedAmount;
         const diff = Math.abs(net - dto.monthlyRentWithoutBills);
@@ -191,13 +233,13 @@ export class LeasesService {
     }
 
     if (dto.type === LeaseType.LANDLORD) {
-      if (!dto.landlordId) {
-        throw new BadRequestException('landlordId is required for LANDLORD lease');
-      }
+      if (!dto.landlordId) throw new BadRequestException('landlordId is required for LANDLORD lease');
       const landlordSnap = await this.landlordsDoc(holderId, dto.landlordId).get();
       if (!landlordSnap.exists) throw new NotFoundException(`Landlord ${dto.landlordId} not found`);
 
-      // optional: ensure property has same landlord if present
+      if (propData?.type && propData.type !== 'APARTMENT') {
+        throw new BadRequestException('LANDLORD lease must be linked to a property of type APARTMENT');
+      }
       if (propData?.landlordId && propData.landlordId !== dto.landlordId) {
         throw new BadRequestException(
           `Lease landlordId (${dto.landlordId}) does not match property.landlordId (${propData.landlordId})`,
@@ -205,15 +247,22 @@ export class LeasesService {
       }
     }
 
+    // ✅ parse date robusto (accetta solo string valide)
+    const startDate = this.requireDate(dto.startDate, 'startDate');
+    const endDate = dto.endDate ? this.requireDate(dto.endDate, 'endDate') : undefined;
+    const nextPaymentDue = dto.nextPaymentDue
+      ? this.requireDate(dto.nextPaymentDue, 'nextPaymentDue')
+      : undefined;
+
     const data: LeaseDoc = this.cleanData({
       type: dto.type,
       propertyId: dto.propertyId,
       tenantId: dto.tenantId,
       landlordId: dto.landlordId,
 
-      startDate: new Date(dto.startDate),
-      endDate: dto.endDate ? new Date(dto.endDate) : undefined,
-      nextPaymentDue: dto.nextPaymentDue ? new Date(dto.nextPaymentDue) : undefined,
+      startDate,
+      endDate,
+      nextPaymentDue,
 
       externalId: dto.externalId,
 
@@ -224,6 +273,14 @@ export class LeasesService {
       depositAmount: dto.depositAmount,
       adminFeeAmount: dto.adminFeeAmount,
       otherFeesAmount: dto.otherFeesAmount,
+
+      bookingCostAmount: dto.bookingCostAmount,
+      bookingCostDate: dto.bookingCostDate ? this.requireDate(dto.bookingCostDate, 'bookingCostDate') : undefined,
+
+      registrationTaxAmount: dto.registrationTaxAmount,
+      registrationTaxDate: dto.registrationTaxDate
+        ? this.requireDate(dto.registrationTaxDate, 'registrationTaxDate')
+        : undefined,
 
       dueDayOfMonth: dto.dueDayOfMonth,
 
@@ -252,11 +309,31 @@ export class LeasesService {
     const doc = await ref.get();
     if (!doc.exists) throw new NotFoundException(`Lease ${leaseId} not found`);
 
+    if (dto.propertyId) {
+      const propSnap = await this.propertiesDoc(holderId, dto.propertyId).get();
+      if (!propSnap.exists) throw new NotFoundException(`Property ${dto.propertyId} not found`);
+      const prop = propSnap.data() as any;
+
+      const current = doc.data() as any;
+      const effectiveType: LeaseType = (dto.type ?? current.type) as LeaseType;
+
+      if (effectiveType === LeaseType.LANDLORD && prop?.type && prop.type !== 'APARTMENT') {
+        throw new BadRequestException('LANDLORD lease must be linked to a property of type APARTMENT');
+      }
+    }
+
     const updateData = this.cleanData({
       ...dto,
-      startDate: dto.startDate ? new Date(dto.startDate) : undefined,
-      endDate: dto.endDate ? new Date(dto.endDate) : undefined,
-      nextPaymentDue: dto.nextPaymentDue ? new Date(dto.nextPaymentDue) : undefined,
+
+      startDate: dto.startDate ? this.requireDate(dto.startDate, 'startDate') : undefined,
+      endDate: dto.endDate ? this.requireDate(dto.endDate, 'endDate') : undefined,
+      nextPaymentDue: dto.nextPaymentDue ? this.requireDate(dto.nextPaymentDue, 'nextPaymentDue') : undefined,
+
+      bookingCostDate: dto.bookingCostDate ? this.requireDate(dto.bookingCostDate, 'bookingCostDate') : undefined,
+      registrationTaxDate: dto.registrationTaxDate
+        ? this.requireDate(dto.registrationTaxDate, 'registrationTaxDate')
+        : undefined,
+
       updatedAt: new Date(),
     } as any);
 
@@ -269,15 +346,13 @@ export class LeasesService {
     const ref = this.leasesCollection(holderId).doc(leaseId);
     const doc = await ref.get();
     if (!doc.exists) throw new NotFoundException(`Lease ${leaseId} not found`);
-
-    // NB: qui non cancelliamo in cascata payments/expenses/files.
-    // Se vuoi anche quello, dimmelo e te lo aggiungo (batch delete + storage delete).
     await ref.delete();
     return { success: true };
   }
 
-  // ---- Schedule generation ----
-
+  // -------------------------
+  // Schedule helpers
+  // -------------------------
   private monthKey(d: Date): string {
     const y = d.getUTCFullYear();
     const m = d.getUTCMonth() + 1;
@@ -290,6 +365,12 @@ export class LeasesService {
     return nd;
   }
 
+  private addDaysUTC(d: Date, days: number): Date {
+    const nd = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+    nd.setUTCDate(nd.getUTCDate() + days);
+    return nd;
+  }
+
   private computeDueDateForMonth(base: Date, dueDayOfMonth: number): Date {
     const y = base.getUTCFullYear();
     const m = base.getUTCMonth();
@@ -297,17 +378,22 @@ export class LeasesService {
     return new Date(Date.UTC(y, m, day));
   }
 
-  /**
-   * Genera righe mensili:
-   * - TENANT => payments (holders/{holderId}/payments)
-   * - LANDLORD => expenses (holders/{holderId}/expenses)
-   *
-   * Regola:
-   * - se nextPaymentDue esiste: quella è la prima dueDate, poi +1 mese mantenendo il giorno (clamp 28)
-   * - altrimenti usa dueDayOfMonth (default 5)
-   *
-   * Genera fino a endDate (se presente) altrimenti per N mesi (default 12).
-   */
+  private async deriveApartmentId(holderId: string, propertyId: string): Promise<string> {
+    const propSnap = await this.propertiesDoc(holderId, propertyId).get();
+    if (!propSnap.exists) throw new NotFoundException(`Property ${propertyId} not found`);
+    const prop = propSnap.data() as any;
+
+    if (prop?.type === 'APARTMENT') return propertyId;
+
+    const apartmentId = prop?.apartmentId;
+    if (!apartmentId) {
+      throw new BadRequestException(
+        `Property ${propertyId} is not APARTMENT and has no apartmentId. Set properties.apartmentId on ROOM/BED.`,
+      );
+    }
+    return apartmentId;
+  }
+
   async generateSchedule(holderId: string, leaseId: string, monthsIfNoEnd = 12) {
     const leaseSnap = await this.leasesCollection(holderId).doc(leaseId).get();
     if (!leaseSnap.exists) throw new NotFoundException(`Lease ${leaseId} not found`);
@@ -318,29 +404,15 @@ export class LeasesService {
     const propertyId: string = lease.propertyId;
     if (!propertyId) throw new BadRequestException('lease.propertyId missing');
 
-    // property => buildingId
-    const propSnap = await this.propertiesDoc(holderId, propertyId).get();
-    if (!propSnap.exists) throw new NotFoundException(`Property ${propertyId} not found`);
-    const buildingId = (propSnap.data() as any)?.buildingId ?? undefined;
-
     const tenantId: string | undefined = lease.tenantId;
     const landlordId: string | undefined = lease.landlordId;
 
-    // ✅ Timestamp-safe
-    const startDate = this.toJsDate(lease.startDate);
-    const endDate: Date | undefined = lease.endDate ? this.toJsDate(lease.endDate) : undefined;
-    const firstDue: Date | undefined = lease.nextPaymentDue ? this.toJsDate(lease.nextPaymentDue) : undefined;
-
-    if (Number.isNaN(startDate.getTime())) {
-      throw new BadRequestException('lease.startDate invalid or missing');
-    }
+    // ✅ QUI la differenza: parse robusto (string/timestamp)
+    const startDate = this.requireDate(lease.startDate, 'lease.startDate');
+    const endDate: Date | undefined = this.parseAnyDateLike(lease.endDate);
+    const firstDue: Date | undefined = this.parseAnyDateLike(lease.nextPaymentDue);
 
     const dueDayOfMonth: number = lease.dueDayOfMonth ?? 5;
-    const amountNet: number = Number(lease.monthlyRentWithoutBills);
-
-    if (Number.isNaN(amountNet)) {
-      throw new BadRequestException('lease.monthlyRentWithoutBills invalid');
-    }
 
     if (type === LeaseType.TENANT) {
       if (!tenantId) throw new BadRequestException('TENANT lease missing tenantId');
@@ -348,63 +420,182 @@ export class LeasesService {
       if (!landlordId) throw new BadRequestException('LANDLORD lease missing landlordId');
     }
 
-    // range mensile
-    const startMonth = new Date(Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), 1));
-    const maxEnd = endDate
-      ? new Date(Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth(), 1))
-      : this.addMonthsUTC(startMonth, monthsIfNoEnd - 1);
+    const apartmentId =
+      type === LeaseType.LANDLORD ? propertyId : await this.deriveApartmentId(holderId, propertyId);
 
-    // prima scadenza
-    let dueCursor: Date | undefined = firstDue
-      ? new Date(
-          Date.UTC(
-            firstDue.getUTCFullYear(),
-            firstDue.getUTCMonth(),
-            Math.min(28, firstDue.getUTCDate()),
-          ),
-        )
-      : undefined;
+    const aptSnap = await this.propertiesDoc(holderId, apartmentId).get();
+    const buildingId = aptSnap.exists ? (aptSnap.data() as any)?.buildingId : undefined;
+
+    const amountNet: number = Number(lease.monthlyRentWithoutBills);
 
     const batch = this.firebaseService.firestore.batch();
-    let writes = 0;
 
-    let cursor = startMonth;
+    // -------------------------
+    // EXTRA CASHFLOWS (TENANT)
+    // -------------------------
+    if (type === LeaseType.TENANT) {
+      const startISO = this.isoDate(startDate);
+      const startMonth = this.monthKey(startDate);
+
+      const depositAmount = lease.depositAmount !== undefined ? Number(lease.depositAmount) : undefined;
+      const adminFeeAmount = lease.adminFeeAmount !== undefined ? Number(lease.adminFeeAmount) : undefined;
+
+      if (depositAmount && depositAmount > 0) {
+        const ref = this.paymentsCollection(holderId).doc(`${leaseId}_deposit_start`);
+        batch.set(
+          ref,
+          this.cleanData({
+            leaseId,
+            tenantId,
+            propertyId,
+            apartmentId,
+            buildingId: buildingId ?? undefined,
+            dueDate: startISO,
+            paidDate: undefined,
+            amount: depositAmount,
+            currency: 'EUR',
+            kind: 'DEPOSIT',
+            status: 'PLANNED',
+            period: startMonth,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }),
+          { merge: true },
+        );
+      }
+
+      if (adminFeeAmount && adminFeeAmount > 0) {
+        const ref = this.paymentsCollection(holderId).doc(`${leaseId}_admin_fee_start`);
+        batch.set(
+          ref,
+          this.cleanData({
+            leaseId,
+            tenantId,
+            propertyId,
+            apartmentId,
+            buildingId: buildingId ?? undefined,
+            dueDate: startISO,
+            paidDate: undefined,
+            amount: adminFeeAmount,
+            currency: 'EUR',
+            kind: 'ADMIN_FEE',
+            status: 'PLANNED',
+            period: startMonth,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }),
+          { merge: true },
+        );
+      }
+
+      const bookingCostAmount = lease.bookingCostAmount !== undefined ? Number(lease.bookingCostAmount) : undefined;
+      const bookingCostDate: Date | undefined = this.parseAnyDateLike(lease.bookingCostDate);
+
+      if (bookingCostAmount && bookingCostAmount > 0) {
+        const d = bookingCostDate ?? startDate;
+        const ref = this.expensesCollection(holderId).doc(`${leaseId}_booking_cost`);
+        batch.set(
+          ref,
+          this.cleanData({
+            leaseId,
+            propertyId: apartmentId,
+            costDate: this.isoDate(d),
+            costMonth: this.monthKey(d),
+            amount: bookingCostAmount,
+            currency: 'EUR',
+            type: 'BOOKING_COST',
+            scope: 'UNIT',
+            status: 'PLANNED',
+            notes: undefined,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }),
+          { merge: true },
+        );
+      }
+
+      const registrationTaxAmount =
+        lease.registrationTaxAmount !== undefined ? Number(lease.registrationTaxAmount) : undefined;
+      const registrationTaxDate: Date | undefined = this.parseAnyDateLike(lease.registrationTaxDate);
+
+      if (registrationTaxAmount && registrationTaxAmount > 0) {
+        const d = registrationTaxDate ?? startDate;
+        const ref = this.expensesCollection(holderId).doc(`${leaseId}_registration_tax`);
+        batch.set(
+          ref,
+          this.cleanData({
+            leaseId,
+            propertyId: apartmentId,
+            costDate: this.isoDate(d),
+            costMonth: this.monthKey(d),
+            amount: registrationTaxAmount,
+            currency: 'EUR',
+            type: 'REGISTRATION_TAX',
+            scope: 'UNIT',
+            status: 'PLANNED',
+            notes: undefined,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }),
+          { merge: true },
+        );
+      }
+
+      if (depositAmount && depositAmount > 0 && endDate) {
+        const refundDate = this.addDaysUTC(endDate, 60);
+        const ref = this.expensesCollection(holderId).doc(`${leaseId}_deposit_refund`);
+        batch.set(
+          ref,
+          this.cleanData({
+            leaseId,
+            propertyId: apartmentId,
+            costDate: this.isoDate(refundDate),
+            costMonth: this.monthKey(refundDate),
+            amount: depositAmount,
+            currency: 'EUR',
+            type: 'DEPOSIT_REFUND',
+            scope: 'UNIT',
+            status: 'PLANNED',
+            notes: undefined,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }),
+          { merge: true },
+        );
+      }
+    }
+
+    // -------------------------
+    // RENT MONTHLY (TENANT -> payments, LANDLORD -> expenses)
+    // -------------------------
+
+    const startMonthCursor = new Date(Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), 1));
+    const maxEnd = endDate
+      ? new Date(Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth(), 1))
+      : this.addMonthsUTC(startMonthCursor, monthsIfNoEnd - 1);
+
+    let dueCursor: Date | undefined = firstDue
+      ? new Date(Date.UTC(firstDue.getUTCFullYear(), firstDue.getUTCMonth(), Math.min(28, firstDue.getUTCDate())))
+      : undefined;
+
+    let cursor = startMonthCursor;
     while (cursor.getTime() <= maxEnd.getTime()) {
       const period = this.monthKey(cursor);
 
-      // calcolo dueDate (Date)
       let dueDate: Date;
       if (dueCursor) {
         while (
           dueCursor.getUTCFullYear() < cursor.getUTCFullYear() ||
-          (dueCursor.getUTCFullYear() === cursor.getUTCFullYear() &&
-            dueCursor.getUTCMonth() < cursor.getUTCMonth())
+          (dueCursor.getUTCFullYear() === cursor.getUTCFullYear() && dueCursor.getUTCMonth() < cursor.getUTCMonth())
         ) {
           dueCursor = this.addMonthsUTC(dueCursor, 1);
-          dueCursor = new Date(
-            Date.UTC(
-              dueCursor.getUTCFullYear(),
-              dueCursor.getUTCMonth(),
-              Math.min(28, dueCursor.getUTCDate()),
-            ),
-          );
+          dueCursor = new Date(Date.UTC(dueCursor.getUTCFullYear(), dueCursor.getUTCMonth(), Math.min(28, dueCursor.getUTCDate())));
         }
 
-        if (
-          dueCursor.getUTCFullYear() === cursor.getUTCFullYear() &&
-          dueCursor.getUTCMonth() === cursor.getUTCMonth()
-        ) {
+        if (dueCursor.getUTCFullYear() === cursor.getUTCFullYear() && dueCursor.getUTCMonth() === cursor.getUTCMonth()) {
           dueDate = dueCursor;
-
-          // prepara successiva
           const next = this.addMonthsUTC(dueCursor, 1);
-          dueCursor = new Date(
-            Date.UTC(
-              next.getUTCFullYear(),
-              next.getUTCMonth(),
-              Math.min(28, dueDate.getUTCDate()),
-            ),
-          );
+          dueCursor = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth(), Math.min(28, dueDate.getUTCDate())));
         } else {
           dueDate = this.computeDueDateForMonth(cursor, dueDayOfMonth);
         }
@@ -412,20 +603,13 @@ export class LeasesService {
         dueDate = this.computeDueDateForMonth(cursor, dueDayOfMonth);
       }
 
-      const dueISO = this.isoDate(dueDate);
-
       if (type === LeaseType.TENANT) {
-        // amount: se c’è monthlyRentWithBills usa quello, altrimenti net (+ bills se presente)
         const gross = lease.monthlyRentWithBills;
         const bills = lease.billsIncludedAmount;
         const amount =
-          gross !== undefined
-            ? Number(gross)
-            : bills !== undefined
-              ? Number(amountNet) + Number(bills)
-              : Number(amountNet);
+          gross !== undefined ? Number(gross) : bills !== undefined ? Number(amountNet) + Number(bills) : Number(amountNet);
 
-        const ref = this.paymentsCollection(holderId).doc();
+        const ref = this.paymentsCollection(holderId).doc(`${leaseId}_rent_${period}`);
 
         batch.set(
           ref,
@@ -433,28 +617,22 @@ export class LeasesService {
             leaseId,
             tenantId,
             propertyId,
+            apartmentId,
             buildingId: buildingId ?? undefined,
-
-            // ✅ coerente con CreatePaymentDto/UI
-            dueDate: dueISO, // "YYYY-MM-DD"
+            dueDate: this.isoDate(dueDate),
             paidDate: undefined,
-
             amount,
             currency: 'EUR',
-
             kind: 'RENT',
             status: 'PLANNED',
-
-            notes: `Auto-generated schedule (${period})`,
-
+            period,
             createdAt: new Date(),
             updatedAt: new Date(),
           }),
+          { merge: true },
         );
-
-        writes++;
       } else {
-        const ref = this.expensesCollection(holderId).doc();
+        const ref = this.expensesCollection(holderId).doc(`${leaseId}_rent_to_landlord_${period}`);
 
         batch.set(
           ref,
@@ -462,37 +640,25 @@ export class LeasesService {
             leaseId,
             propertyId,
             landlordId,
-
-            // ✅ coerente con CreateExpenseDto/UI
-            costDate: dueISO,
+            costDate: this.isoDate(dueDate),
             costMonth: period,
-
             amount: Number(amountNet),
             currency: 'EUR',
-
             type: 'RENT_TO_LANDLORD',
-            frequency: 'MONTHLY',
-
             scope: 'UNIT',
-            allocationMode: 'NONE',
-
             status: 'PLANNED',
-            paidDate: undefined,
-
-            notes: `Auto-generated schedule (${period})`,
-
+            notes: undefined,
             createdAt: new Date(),
             updatedAt: new Date(),
           }),
+          { merge: true },
         );
-
-        writes++;
       }
 
       cursor = this.addMonthsUTC(cursor, 1);
     }
 
     await batch.commit();
-    return { success: true, generated: writes };
+    return { success: true };
   }
 }

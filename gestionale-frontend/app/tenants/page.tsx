@@ -6,22 +6,28 @@ import EntityDocuments from '@/components/EntityDocuments';
 import { Field, Input, Select } from '@/components/form/Field';
 
 type TenantStatus = 'CURRENT' | 'INCOMING' | 'PAST' | 'PENDING';
-type TenantGender = 'M' | 'F' | 'OTHER';
+type Gender = 'M' | 'F' | 'OTHER';
 
 type Tenant = {
   id: string;
+
   firstName?: string;
   lastName?: string;
+
   email?: string;
   phone?: string;
-  birthday?: string;
+
+  birthday?: string; // YYYY-MM-DD
   nationality?: string;
   euCitizen?: boolean;
-  gender?: TenantGender;
+  gender?: Gender;
+
   address?: string;
   taxCode?: string;
+
   documentType?: string;
   documentNumber?: string;
+
   school?: string;
   notes?: string;
   status?: TenantStatus;
@@ -38,7 +44,13 @@ type CreateTenantForm = {
   nationality: string;
 
   euCitizen: '' | 'yes' | 'no';
-  gender: '' | TenantGender;
+  gender: '' | Gender;
+
+  address: string;
+  taxCode: string;
+
+  documentType: string;
+  documentNumber: string;
 
   school: string;
   status: TenantStatus;
@@ -54,8 +66,8 @@ export default function TenantsPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // quale tenant ha documenti aperti
-  const [openDocsTenantId, setOpenDocsTenantId] = useState<string | null>(null);
+  // docs
+  const [openDocsId, setOpenDocsId] = useState<string | null>(null);
 
   const [form, setForm] = useState<CreateTenantForm>({
     firstName: '',
@@ -66,30 +78,29 @@ export default function TenantsPage() {
     nationality: '',
     euCitizen: '',
     gender: '',
+    address: '',
+    taxCode: '',
+    documentType: '',
+    documentNumber: '',
     school: '',
     status: 'CURRENT',
     notes: '',
   });
 
-  const onChange = (key: keyof CreateTenantForm, value: string) => {
+  const onChange = (key: keyof CreateTenantForm, value: any) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const tenantLabel = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const t of items) {
-      const n = `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim();
-      m.set(t.id, n || t.id);
-    }
-    return m;
-  }, [items]);
+  const fullName = useMemo(() => {
+    return (t: Tenant) => `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim() || t.id;
+  }, []);
 
   const loadAll = async () => {
     setLoading(true);
     setError(null);
     try {
       const res = await fetchWithAuth('/tenants');
-      setItems(Array.isArray(res) ? (res as Tenant[]) : []);
+      setItems(Array.isArray(res) ? res : []);
     } catch (e: any) {
       setError(e?.message ?? 'Errore caricamento tenants');
     } finally {
@@ -111,6 +122,10 @@ export default function TenantsPage() {
       nationality: '',
       euCitizen: '',
       gender: '',
+      address: '',
+      taxCode: '',
+      documentType: '',
+      documentNumber: '',
       school: '',
       status: 'CURRENT',
       notes: '',
@@ -132,6 +147,12 @@ export default function TenantsPage() {
 
       birthday: form.birthday || undefined,
       nationality: cleanStr(form.nationality) || undefined,
+
+      address: cleanStr(form.address) || undefined,
+      taxCode: cleanStr(form.taxCode) || undefined,
+
+      documentType: cleanStr(form.documentType) || undefined,
+      documentNumber: cleanStr(form.documentNumber) || undefined,
 
       school: cleanStr(form.school) || undefined,
       status: form.status,
@@ -166,7 +187,7 @@ export default function TenantsPage() {
     setBusy(true);
     try {
       await fetchWithAuth(`/tenants/${id}`, { method: 'DELETE' });
-      setOpenDocsTenantId((prev) => (prev === id ? null : prev));
+      setOpenDocsId((prev) => (prev === id ? null : prev));
       await loadAll();
     } catch (e: any) {
       setError(e?.message ?? 'Errore eliminazione tenant');
@@ -177,11 +198,11 @@ export default function TenantsPage() {
 
   return (
     <div className="min-h-screen bg-slate-100">
-      <div className="max-w-5xl mx-auto py-8 px-4 space-y-6">
+      <div className="max-w-6xl mx-auto py-8 px-4 space-y-6">
         <header className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold">Tenants</h1>
-            <p className="text-sm text-slate-600">Gestisci anagrafica inquilini e documenti.</p>
+            <p className="text-sm text-slate-600">Gestisci inquilini e documenti.</p>
           </div>
 
           <button
@@ -203,100 +224,29 @@ export default function TenantsPage() {
         <div className="bg-white rounded-xl shadow p-4 space-y-3">
           <h2 className="font-medium">Nuovo tenant</h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <Field label="Nome" required>
               <Input
                 value={form.firstName}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('firstName', e.target.value)}
+                onChange={(e: any) => onChange('firstName', e.target.value)}
                 disabled={busy}
-                placeholder="Marco"
+                placeholder="Mario"
               />
             </Field>
 
             <Field label="Cognome" required>
               <Input
                 value={form.lastName}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('lastName', e.target.value)}
+                onChange={(e: any) => onChange('lastName', e.target.value)}
                 disabled={busy}
                 placeholder="Rossi"
-              />
-            </Field>
-
-            <Field label="Email">
-              <Input
-                type="email"
-                value={form.email}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('email', e.target.value)}
-                disabled={busy}
-                placeholder="marco@email.com"
-              />
-            </Field>
-
-            <Field label="Telefono">
-              <Input
-                value={form.phone}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('phone', e.target.value)}
-                disabled={busy}
-                placeholder="+39..."
-              />
-            </Field>
-
-            <Field label="Data di nascita">
-              <Input
-                type="date"
-                value={form.birthday}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('birthday', e.target.value)}
-                disabled={busy}
-              />
-            </Field>
-
-            <Field label="Nazionalità">
-              <Input
-                value={form.nationality}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('nationality', e.target.value)}
-                disabled={busy}
-                placeholder="IT"
-              />
-            </Field>
-
-            <Field label="Cittadino UE">
-              <Select
-                value={form.euCitizen}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => onChange('euCitizen', e.target.value)}
-                disabled={busy}
-              >
-                <option value="">Non specificato</option>
-                <option value="yes">Sì</option>
-                <option value="no">No</option>
-              </Select>
-            </Field>
-
-            <Field label="Genere">
-              <Select
-                value={form.gender}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => onChange('gender', e.target.value)}
-                disabled={busy}
-              >
-                <option value="">Non specificato</option>
-                <option value="M">M</option>
-                <option value="F">F</option>
-                <option value="OTHER">Altro</option>
-              </Select>
-            </Field>
-
-            <Field label="Scuola">
-              <Input
-                value={form.school}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('school', e.target.value)}
-                disabled={busy}
-                placeholder="IED / NABA / ..."
               />
             </Field>
 
             <Field label="Stato" required>
               <Select
                 value={form.status}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => onChange('status', e.target.value)}
+                onChange={(e: any) => onChange('status', e.target.value as TenantStatus)}
                 disabled={busy}
               >
                 <option value="CURRENT">CURRENT</option>
@@ -306,16 +256,117 @@ export default function TenantsPage() {
               </Select>
             </Field>
 
-            <div className="md:col-span-2">
-              <Field label="Note">
-                <Input
-                  value={form.notes}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('notes', e.target.value)}
-                  disabled={busy}
-                  placeholder="Note interne..."
-                />
-              </Field>
-            </div>
+            <Field label="Email">
+              <Input
+                value={form.email}
+                onChange={(e: any) => onChange('email', e.target.value)}
+                disabled={busy}
+                placeholder="mail@..."
+              />
+            </Field>
+
+            <Field label="Telefono">
+              <Input
+                value={form.phone}
+                onChange={(e: any) => onChange('phone', e.target.value)}
+                disabled={busy}
+                placeholder="+39..."
+              />
+            </Field>
+
+            <Field label="Data di nascita">
+              <Input
+                type="date"
+                value={form.birthday}
+                onChange={(e: any) => onChange('birthday', e.target.value)}
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Nazionalità">
+              <Input
+                value={form.nationality}
+                onChange={(e: any) => onChange('nationality', e.target.value)}
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Cittadino UE">
+              <Select
+                value={form.euCitizen}
+                onChange={(e: any) => onChange('euCitizen', e.target.value)}
+                disabled={busy}
+              >
+                <option value="">(non specificato)</option>
+                <option value="yes">Sì</option>
+                <option value="no">No</option>
+              </Select>
+            </Field>
+
+            <Field label="Genere">
+              <Select
+                value={form.gender}
+                onChange={(e: any) => onChange('gender', e.target.value as any)}
+                disabled={busy}
+              >
+                <option value="">(non specificato)</option>
+                <option value="M">M</option>
+                <option value="F">F</option>
+                <option value="OTHER">OTHER</option>
+              </Select>
+            </Field>
+
+            <Field label="Scuola">
+              <Input
+                value={form.school}
+                onChange={(e: any) => onChange('school', e.target.value)}
+                disabled={busy}
+                placeholder="IED, NABA..."
+              />
+            </Field>
+
+            <Field label="Indirizzo" className="md:col-span-2">
+              <Input
+                value={form.address}
+                onChange={(e: any) => onChange('address', e.target.value)}
+                disabled={busy}
+                placeholder="Via..."
+              />
+            </Field>
+
+            <Field label="Codice fiscale">
+              <Input
+                value={form.taxCode}
+                onChange={(e: any) => onChange('taxCode', e.target.value)}
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Tipo documento">
+              <Input
+                value={form.documentType}
+                onChange={(e: any) => onChange('documentType', e.target.value)}
+                disabled={busy}
+                placeholder="Carta identità, Passaporto..."
+              />
+            </Field>
+
+            <Field label="Numero documento">
+              <Input
+                value={form.documentNumber}
+                onChange={(e: any) => onChange('documentNumber', e.target.value)}
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Note" className="md:col-span-3">
+              <Input
+                value={form.notes}
+                onChange={(e: any) => onChange('notes', e.target.value)}
+                disabled={busy}
+                placeholder="Note interne..."
+              />
+            </Field>
           </div>
 
           <div className="flex items-center gap-3">
@@ -349,38 +400,46 @@ export default function TenantsPage() {
           ) : (
             <div className="space-y-2">
               {items.map((t) => {
-                const docsOpen = openDocsTenantId === t.id;
-                const name = `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim() || t.id;
+                const docsOpen = openDocsId === t.id;
 
                 return (
                   <div key={t.id} className="border rounded-lg p-3">
                     <div className="flex justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="font-semibold truncate">{name}</div>
+                        <div className="font-semibold truncate">
+                          {fullName(t)}
+                          {t.school ? <span className="text-xs text-slate-500"> · {t.school}</span> : null}
+                        </div>
 
                         <div className="text-sm text-slate-600">
-                          {(t.email ? t.email : '')}
-                          {t.email && t.phone ? ' · ' : ''}
-                          {(t.phone ? t.phone : '')}
-                          {t.school ? ` · ${t.school}` : ''}
+                          {t.email ? t.email : '-'}
+                          {t.phone ? ` · ${t.phone}` : ''}
                         </div>
 
                         <div className="text-xs text-slate-500 mt-1">
-                          Status: {t.status ?? 'CURRENT'}
+                          status: {t.status ?? 'CURRENT'}
                           {t.nationality ? ` · ${t.nationality}` : ''}
                           {typeof t.euCitizen === 'boolean' ? ` · UE: ${t.euCitizen ? 'Sì' : 'No'}` : ''}
-                          {t.birthday ? ` · Nascita: ${t.birthday}` : ''}
-                          {t.gender ? ` · Genere: ${t.gender}` : ''}
+                          {t.birthday ? ` · nascita: ${t.birthday}` : ''}
+                          {t.gender ? ` · gender: ${t.gender}` : ''}
                         </div>
 
-                        {t.notes && <div className="text-xs text-slate-500 mt-1">Note: {t.notes}</div>}
+                        {(t.documentType || t.documentNumber) && (
+                          <div className="text-xs text-slate-500 mt-1">
+                            doc: {t.documentType ?? '-'} {t.documentNumber ? `· ${t.documentNumber}` : ''}
+                          </div>
+                        )}
+
+                        {t.taxCode && <div className="text-xs text-slate-500 mt-1">cf: {t.taxCode}</div>}
+                        {t.address && <div className="text-xs text-slate-500 mt-1">addr: {t.address}</div>}
+                        {t.notes && <div className="text-xs text-slate-500 mt-1">note: {t.notes}</div>}
 
                         <div className="text-[11px] text-slate-400 mt-1">id: {t.id}</div>
                       </div>
 
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => setOpenDocsTenantId((prev) => (prev === t.id ? null : t.id))}
+                          onClick={() => setOpenDocsId((prev) => (prev === t.id ? null : t.id))}
                           className="border rounded-md px-3 py-2 text-sm"
                           disabled={busy}
                         >
@@ -402,7 +461,7 @@ export default function TenantsPage() {
                         <EntityDocuments
                           entityKind="tenants"
                           entityId={t.id}
-                          label={`Documenti tenant (${tenantLabel.get(t.id) ?? t.id})`}
+                          label={`Documenti tenant (${fullName(t)})`}
                         />
                       </div>
                     )}

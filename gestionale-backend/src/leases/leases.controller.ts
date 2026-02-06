@@ -24,7 +24,6 @@ export class LeasesController {
 
   private getHolderId(req: any): string {
     const u = req.user as { uid: string; holderId?: string; role?: string };
-    // per HOLDER: holderId se c’è, altrimenti uid
     return u.holderId ?? u.uid;
   }
 
@@ -63,7 +62,11 @@ export class LeasesController {
     return this.leasesService.remove(holderId, id);
   }
 
-  // genera payments/expenses mensili
+  // -------------------------
+  // GENERATE SCHEDULE
+  // -------------------------
+
+  // ✅ kebab-case (quello "ufficiale")
   @Post(':id/generate-schedule')
   @Roles('HOLDER')
   generateSchedule(@Req() req: any, @Param('id') id: string) {
@@ -71,25 +74,36 @@ export class LeasesController {
     return this.leasesService.generateSchedule(holderId, id);
   }
 
+  // ✅ alias camelCase (per evitare 404 se FE chiama /generateSchedule)
+  @Post(':id/generateSchedule')
+  @Roles('HOLDER')
+  generateScheduleAlias(@Req() req: any, @Param('id') id: string) {
+    const holderId = this.getHolderId(req);
+    return this.leasesService.generateSchedule(holderId, id);
+  }
+
+  // -------------------------
+  // FILES (documenti)
+  // -------------------------
+
   @Post(':id/files')
-@Roles('HOLDER')
-addFile(@Req() req, @Param('id') leaseId: string, @Body() dto: CreateLeaseFileDto) {
-  const holderId = this.getHolderId(req);
-  return this.leasesService.addFile(holderId, leaseId, dto);
-}
+  @Roles('HOLDER')
+  addFile(@Req() req: any, @Param('id') leaseId: string, @Body() dto: CreateLeaseFileDto) {
+    const holderId = this.getHolderId(req);
+    return this.leasesService.addFile(holderId, leaseId, dto);
+  }
 
-@Get(':id/files')
-@Roles('HOLDER')
-listFiles(@Req() req, @Param('id') leaseId: string) {
-  const holderId = this.getHolderId(req);
-  return this.leasesService.listFiles(holderId, leaseId);
-}
+  @Get(':id/files')
+  @Roles('HOLDER')
+  listFiles(@Req() req: any, @Param('id') leaseId: string) {
+    const holderId = this.getHolderId(req);
+    return this.leasesService.listFiles(holderId, leaseId);
+  }
 
-@Delete(':id/files/:fileId')
-@Roles('HOLDER')
-removeFile(@Req() req, @Param('id') leaseId: string, @Param('fileId') fileId: string) {
-  const holderId = this.getHolderId(req);
-  return this.leasesService.removeFile(holderId, leaseId, fileId);
+  @Delete(':id/files/:fileId')
+  @Roles('HOLDER')
+  removeFile(@Req() req: any, @Param('id') leaseId: string, @Param('fileId') fileId: string) {
+    const holderId = this.getHolderId(req);
+    return this.leasesService.removeFile(holderId, leaseId, fileId);
+  }
 }
-}
-

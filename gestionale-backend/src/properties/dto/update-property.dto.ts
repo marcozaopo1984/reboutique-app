@@ -1,5 +1,39 @@
-// src/properties/dto/update-property.dto.ts
-import { CreatePropertyDto } from './create-property.dto';
-import { PartialType } from '@nestjs/mapped-types';
+import { IsBoolean, IsIn, IsOptional, IsString } from 'class-validator';
+import { PROPERTY_TYPES } from './create-property.dto';
+import type { PropertyType } from './create-property.dto';
 
-export class UpdatePropertyDto extends PartialType(CreatePropertyDto)  {}
+export class UpdatePropertyDto {
+  @IsOptional()
+  @IsString()
+  code?: string;
+
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsIn(PROPERTY_TYPES)
+  type?: PropertyType;
+
+  // legacy
+  @IsOptional()
+  @IsString()
+  apartmentId?: string;
+
+  // ✅ NEW
+  @IsOptional()
+  @IsString()
+  apartmentLabel?: string;
+
+  @IsOptional()
+  @IsString()
+  apartmentKey?: string;
+
+  @IsOptional()
+  @IsString()
+  buildingId?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isPublished?: boolean;
+}

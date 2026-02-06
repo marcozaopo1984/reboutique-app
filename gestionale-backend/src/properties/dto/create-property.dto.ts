@@ -1,108 +1,57 @@
-// src/properties/dto/create-property.dto.ts
+import { IsBoolean, IsOptional, IsString, IsIn } from 'class-validator';
 
-import {
-  IsBoolean,
-  IsInt,
-  IsNumber,
-  IsOptional,
-  IsString,
-  IsUrl,
-  Max,
-  Min,
-} from 'class-validator';
+export const PROPERTY_TYPES = ['APARTMENT', 'ROOM', 'BED'] as const;
+export type PropertyType = (typeof PROPERTY_TYPES)[number];
 
 export class CreatePropertyDto {
-  @IsString()
-  code: string;
-
-  @IsString()
-  name: string;
-
+  // campi già presenti nel tuo progetto (lasciati volutamente “larghi”)
   @IsOptional()
   @IsString()
-  address?: string;
-
-  
-  @IsString()
-  type: string;
+  code?: string;
 
   @IsOptional()
   @IsString()
-  apartment?: string;
+  name?: string;
 
+  /**
+   * opzionale: APARTMENT | ROOM | BED
+   * (lo manteniamo ma non obblighiamo)
+   */
+  @IsOptional()
+  @IsIn(PROPERTY_TYPES)
+  type?: PropertyType;
+
+  /**
+   * (legacy) se ROOM/BED: collega ad un APARTMENT (propertyId dell'appartamento)
+   * (se non lo usi più, può rimanere opzionale)
+   */
   @IsOptional()
   @IsString()
-  room?: string;
+  apartmentId?: string;
 
+  /**
+   * ✅ NEW: “appartamento” come attributo testuale (ux)
+   * Esempio: "Argentina 4"
+   */
   @IsOptional()
-  @IsInt()
-  @Min(0)
-  beds?: number;
+  @IsString()
+  apartmentLabel?: string;
 
+  /**
+   * ✅ NEW: chiave contabile stabile/normalizzata (per P&L)
+   * Esempio: "argentina_4"
+   */
   @IsOptional()
-  @IsNumber()
-  @Min(0)
-  roomSizeM2?: number;
-
-  @IsOptional()
-  @IsBoolean()
-  hasBalcony?: boolean;
-
-  @IsOptional()
-  @IsBoolean()
-  hasDryer?: boolean;
-
-  @IsOptional()
-  @IsBoolean()
-  hasAC?: boolean;
-
-  @IsOptional()
-  @IsBoolean()
-  hasHeating?: boolean;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  baseMonthlyRent?: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  monthlyUtilities?: number;
-
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  @Max(24)
-  depositMonths?: number;
+  @IsString()
+  apartmentKey?: string;
 
   @IsOptional()
   @IsString()
   buildingId?: string;
 
   @IsOptional()
-  @IsInt()
-  @Min(-10)
-  @Max(200)
-  floor?: number;
-
-  @IsOptional()
-  @IsString()
-  unitNumber?: string;
-
-  @IsOptional()
-  @IsUrl({ require_tld: false })
-  websiteUrl?: string;
-
-  @IsOptional()
-  @IsUrl({ require_tld: false })
-  airbnbUrl?: string;
-
-  @IsOptional()
-  @IsUrl({ require_tld: false })
-  spotahomeUrl?: string;
-
-  @IsOptional()
   @IsBoolean()
   isPublished?: boolean;
+
+  
 }

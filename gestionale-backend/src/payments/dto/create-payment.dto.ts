@@ -1,11 +1,17 @@
-import {
-  IsDateString,
-  IsIn,
-  IsNumber,
-  IsOptional,
-  IsString,
-  Min,
-} from 'class-validator';
+import { IsISO8601, IsNumber, IsOptional, IsString, IsIn } from 'class-validator';
+
+export const PAYMENT_KINDS = [
+  'RENT',
+  'BUILDING_FEE',
+  'OTHER',
+  'ADMIN_FEE',
+  'DEPOSIT',
+] as const;
+
+export type PaymentKind = (typeof PAYMENT_KINDS)[number];
+
+export const PAYMENT_STATUSES = ['PLANNED', 'PAID', 'OVERDUE'] as const;
+export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
 export class CreatePaymentDto {
   @IsOptional()
@@ -13,38 +19,44 @@ export class CreatePaymentDto {
   leaseId?: string;
 
   @IsString()
-  tenantId: string;
+  tenantId!: string;
 
   @IsString()
-  propertyId: string;
+  propertyId!: string;
+
+  // ✅ NEW: chiave contabile (APARTMENT)
+  @IsOptional()
+  @IsString()
+  apartmentId?: string;
 
   @IsOptional()
   @IsString()
   buildingId?: string;
 
-  @IsDateString()
-  dueDate: string;
+  @IsISO8601()
+  dueDate!: string; // "YYYY-MM-DD"
 
   @IsOptional()
-  @IsDateString()
+  @IsISO8601()
   paidDate?: string;
 
   @IsNumber()
-  @Min(0)
-  amount: number;
+  amount!: number;
 
   @IsOptional()
   @IsString()
   currency?: string;
 
-  @IsIn(['RENT', 'BUILDING_FEE', 'OTHER'])
-  kind: 'RENT' | 'BUILDING_FEE' | 'OTHER';
+  // ✅ include ADMIN_FEE e DEPOSIT
+  @IsIn(PAYMENT_KINDS)
+  kind!: PaymentKind;
 
   @IsOptional()
-  @IsIn(['PLANNED', 'PAID', 'OVERDUE'])
-  status?: 'PLANNED' | 'PAID' | 'OVERDUE';
+  @IsIn(PAYMENT_STATUSES)
+  status?: PaymentStatus;
 
+  // opzionale
   @IsOptional()
   @IsString()
-  notes?: string;
+  period?: string; // es "2026-02"
 }

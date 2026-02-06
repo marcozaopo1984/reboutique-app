@@ -1,9 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { FirebaseService } from '../firebase/firebase.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { UpdatePaymentDto } from './dto/update-payment.dto';
-import { CreatePaymentFileDto } from './dto/create-payment-file.dto';
-import * as admin from 'firebase-admin';
 
 @Injectable()
 export class PaymentsService {
@@ -16,11 +14,15 @@ export class PaymentsService {
       .collection('payments');
   }
 
-  private paymentFilesCollection(holderId: string, paymentId: string) {
-    return this.paymentsCollection(holderId).doc(paymentId).collection('files');
+  private propertiesDoc(holderId: string, propertyId: string) {
+    return this.firebaseService.firestore
+      .collection('holders')
+      .doc(holderId)
+      .collection('properties')
+      .doc(propertyId);
   }
 
-  private clean<T extends Record<string, any>>(data: T): T {
+  private clean<T extends Record<string, any>>(data: T): Partial<T> {
     const out: any = {};
     for (const [key, val] of Object.entries(data)) {
       if (val !== undefined) out[key] = val;
@@ -28,16 +30,42 @@ export class PaymentsService {
     return out;
   }
 
-  // -------------------------
-  // CRUD PAYMENTS
-  // -------------------------
+  /**
+   * ✅ Deriva apartmentId dalla property:
+   * - se property.type == 'APARTMENT' => apartmentId = propertyId
+   * - altrimenti => apartmentId = property.apartmentId (obbligatorio)
+   */
+  private async deriveApartmentId(holderId: string, propertyId: string): Promise<string> {
+    const propSnap = await this.propertiesDoc(holderId, propertyId).get();
+    if (!propSnap.exists) throw new NotFoundException(`Property ${propertyId} not found`);
+
+    const prop = propSnap.data() as any;
+    const type = prop?.type;
+
+    if (type === 'APARTMENT') return propertyId;
+
+    const apartmentId = prop?.apartmentId;
+    if (!apartmentId) {
+      throw new BadRequestException(
+        `Property ${propertyId} is not APARTMENT and has no apartmentId. Set properties.apartmentId on ROOM/BED.`,
+      );
+    }
+    return apartmentId;
+  }
 
   async create(holderId: string, dto: CreatePaymentDto) {
     const col = this.paymentsCollection(holderId);
 
+    // ✅ se non arriva apartmentId, lo calcolo dal propertyId
+    const apartmentId =
+      dto.apartmentId ??
+      (dto.propertyId ? await this.deriveApartmentId(holderId, dto.propertyId) : undefined);
+
     const data = this.clean({
       ...dto,
+      apartmentId,
       status: dto.status ?? 'PLANNED',
+      currency: dto.currency ?? 'EUR',
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -57,8 +85,15 @@ export class PaymentsService {
     const snap = await ref.get();
     if (!snap.exists) throw new NotFoundException(`Payment ${paymentId} not found`);
 
+    // ✅ se aggiorno propertyId e non passo apartmentId, lo ricalcolo
+    let apartmentId = dto.apartmentId;
+    if (!apartmentId && dto.propertyId) {
+      apartmentId = await this.deriveApartmentId(holderId, dto.propertyId);
+    }
+
     const data = this.clean({
       ...dto,
+      apartmentId,
       updatedAt: new Date(),
     });
 
@@ -72,66 +107,6 @@ export class PaymentsService {
     const snap = await ref.get();
     if (!snap.exists) throw new NotFoundException(`Payment ${paymentId} not found`);
 
-    // (facoltativo) se vuoi cancellare anche i file metadata: li lasciamo per ora
-    await ref.delete();
-    return { success: true };
-  }
-
-  // -------------------------
-  // FILES (subcollection /files)
-  // -------------------------
-
-  async addFile(holderId: string, paymentId: string, dto: CreatePaymentFileDto) {
-    const paymentRef = this.paymentsCollection(holderId).doc(paymentId);
-    const paymentSnap = await paymentRef.get();
-    if (!paymentSnap.exists) throw new NotFoundException(`Payment ${paymentId} not found`);
-
-    const filesCol = this.paymentFilesCollection(holderId, paymentId);
-
-    const data = this.clean({
-      ...dto,
-      createdAt: new Date(),
-    });
-
-    const ref = await filesCol.add(data);
-    const snap = await ref.get();
-    return { id: snap.id, ...(snap.data() as any) };
-  }
-
-  async listFiles(holderId: string, paymentId: string) {
-    const paymentRef = this.paymentsCollection(holderId).doc(paymentId);
-    const paymentSnap = await paymentRef.get();
-    if (!paymentSnap.exists) throw new NotFoundException(`Payment ${paymentId} not found`);
-
-    const snap = await this.paymentFilesCollection(holderId, paymentId).get();
-    return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-  }
-
-  async removeFile(holderId: string, paymentId: string, fileId: string) {
-    const paymentRef = this.paymentsCollection(holderId).doc(paymentId);
-    const paymentSnap = await paymentRef.get();
-    if (!paymentSnap.exists) throw new NotFoundException(`Payment ${paymentId} not found`);
-
-    const filesCol = this.paymentFilesCollection(holderId, paymentId);
-    const ref = filesCol.doc(fileId);
-    const doc = await ref.get();
-
-    if (!doc.exists) throw new NotFoundException(`File ${fileId} not found`);
-
-    const data = doc.data() as any;
-    const storagePath: string | undefined = data?.storagePath ?? data?.path;
-
-    // delete fisico su Storage
-    if (storagePath) {
-      try {
-        const bucket = admin.storage().bucket();
-        await bucket.file(storagePath).delete({ ignoreNotFound: true });
-      } catch (err) {
-        console.error('Errore delete Storage file:', storagePath, (err as any)?.message ?? err);
-      }
-    }
-
-    // delete metadata su Firestore
     await ref.delete();
     return { success: true };
   }
