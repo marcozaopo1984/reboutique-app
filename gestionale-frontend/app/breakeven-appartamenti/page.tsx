@@ -11,8 +11,8 @@ type Property = {
   id: string;
   code?: string;
   name?: string;
-  type?: string; // 'APARTMENT' | 'ROOM' | 'BED' | ...
-  apartmentId?: string; // per ROOM/BED: id dell'appartamento
+  type?: string;
+  apartmentId?: string;
 };
 
 type Lease = {
@@ -20,8 +20,8 @@ type Lease = {
   type: LeaseType;
   propertyId: string;
   tenantId?: string;
-  startDate: any; // string | Date | Timestamp
-  endDate?: any; // string | Date | Timestamp
+  startDate: any;
+  endDate?: any;
 };
 
 type PaymentKind = 'RENT' | 'ADMIN_FEE' | 'DEPOSIT' | string;
@@ -30,9 +30,9 @@ type Payment = {
   id: string;
   leaseId?: string;
   tenantId: string;
-  propertyId: string; // granulare
-  apartmentId?: string; // contabile
-  dueDate: any; // string | Date | Timestamp
+  propertyId: string;
+  apartmentId?: string;
+  dueDate: any;
   amount: number;
   kind: PaymentKind;
   status?: string;
@@ -40,10 +40,10 @@ type Payment = {
 
 type Expense = {
   id: string;
-  propertyId: string; // contabile (apartmentId)
-  costDate: any; // string | Date | Timestamp
+  propertyId: string;
+  costDate: any;
   amount: number;
-  type: string; // tipologia
+  type: string;
   status?: string;
 };
 
@@ -55,9 +55,6 @@ type Filters = {
   apartmentId: string;
 };
 
-// -------------------------
-// ✅ MAPPATURE (ADATTA QUI AI TUOI VALORI REALI DI "type" IN EXPENSES)
-// -------------------------
 const EXPENSE_TYPE_MAP: Record<string, string[]> = {
   Consumi: ['CONSUMI', 'CONSUMO', 'UTILITIES'],
   Manutenzioni: ['MANUTENZIONI', 'MANUTENZIONE'],
@@ -77,9 +74,7 @@ const PAYMENT_KIND_MAP = {
   'Deposito Percepito': ['DEPOSIT'],
 } as const;
 
-// -------------------------
 // helpers
-// -------------------------
 const cleanStr = (s: string) => (s ?? '').trim();
 const compareStr = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -129,6 +124,26 @@ const todayYmdUtc = () => new Date().toISOString().slice(0, 10);
 const monthFromYmd = (ymd: string) => (ymd && ymd.length >= 7 ? ymd.slice(0, 7) : '');
 const isBetweenYmd = (d: string, a: string, b: string) => !!d && !!a && !!b && a <= d && d <= b;
 const fmtMoney = (n: number) => (Number.isFinite(n) ? n.toFixed(2) : '0.00');
+
+// ---- CSV helpers ----
+const escapeCsv = (v: unknown) => {
+  const s = String(v ?? '');
+  // quote if contains comma, quote, newline
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+};
+
+const downloadCsv = (filename: string, csv: string) => {
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+};
 
 export default function BreakevenAppartamentiPage() {
   const router = useRouter();
@@ -329,11 +344,7 @@ export default function BreakevenAppartamentiPage() {
     for (const p of payments) {
       if (!p.leaseId) continue;
 
-      const aptId =
-        p.apartmentId ||
-        propertyToApartmentId.get(p.propertyId) ||
-        '';
-
+      const aptId = p.apartmentId || propertyToApartmentId.get(p.propertyId) || '';
       if (!aptId) continue;
 
       if (!m.has(aptId)) m.set(aptId, []);
@@ -455,8 +466,8 @@ export default function BreakevenAppartamentiPage() {
       const costsEconomic = costsCash + DepositoVersato;
       const revenues = CanoniAttivi + AdminAttive + DepositoPercepito;
 
-      const breakevenCash = costsCash - revenues;
-      const breakevenEconomic = costsEconomic - revenues;
+      const breakevenCash = revenues - costsCash;
+      const breakevenEconomic = revenues - costsEconomic;
 
       const mConsumi = sumExpenses(EXPENSE_TYPE_MAP.Consumi, true);
       const mManut = sumExpenses(EXPENSE_TYPE_MAP.Manutenzioni, true);
@@ -474,7 +485,7 @@ export default function BreakevenAppartamentiPage() {
       const mAdmin = sumPayments([...PAYMENT_KIND_MAP['Admin Attive']], true);
       const mDep = sumPayments([...PAYMENT_KIND_MAP['Deposito Percepito']], true);
 
-      const monthlyMargin = mCostsCash - (mCanoni + mAdmin + mDep);
+      const monthlyMargin = mCanoni + mAdmin + mDep - mCostsCash;
 
       out.push({
         apartmentId: aptId,
@@ -544,7 +555,14 @@ export default function BreakevenAppartamentiPage() {
   }, [filtered, sortKey, sortDir]);
 
   const kpis = useMemo(() => {
-    const totals = { costsCash: 0, costsEconomic: 0, revenues: 0, breakevenCash: 0, breakevenEconomic: 0, monthlyMargin: 0 };
+    const totals = {
+      costsCash: 0,
+      costsEconomic: 0,
+      revenues: 0,
+      breakevenCash: 0,
+      breakevenEconomic: 0,
+      monthlyMargin: 0,
+    };
 
     for (const r of filtered) {
       const costsCash =
@@ -571,6 +589,66 @@ export default function BreakevenAppartamentiPage() {
 
     return { count: filtered.length, totals };
   }, [filtered]);
+
+  // ✅ Export CSV (rispetta filtri + ordinamento)
+  const exportCsv = () => {
+    const headers = [
+      'asOf',
+      'apartmentId',
+      'label',
+      'activeLeases',
+      'fromMinStart',
+      'Consumi',
+      'Manutenzioni',
+      'Imposte e Tasse',
+      'Mobili',
+      'Ristrutturazioni',
+      'Volture Energia',
+      'Agenzia',
+      'Fideiussione',
+      'Booking Cost',
+      'Deposito Versato',
+      'Canoni Attivi',
+      'Admin Attive',
+      'Deposito Percepito',
+      'Breakeven di Cassa',
+      'Breakeven Economico',
+      'Current Monthly Margin',
+    ];
+
+    const lines = [headers.map(escapeCsv).join(',')];
+
+    for (const r of sorted) {
+      const row = [
+        asOf,
+        r.apartmentId,
+        r.label,
+        r._activeLeaseCount,
+        r._minStart,
+        r.Consumi,
+        r.Manutenzioni,
+        r['Imposte e Tasse'],
+        r.Mobili,
+        r.Ristrutturazioni,
+        r['Volture Energia'],
+        r.Agenzia,
+        r.Fideiussione,
+        r['Booking Cost'],
+        r['Deposito Versato'],
+        r['Canoni Attivi'],
+        r['Admin Attive'],
+        r['Deposito Percepito'],
+        r['Breakeven di Cassa'],
+        r['Breakeven Economico'],
+        r['Current Monthly Margin'],
+      ];
+
+      lines.push(row.map(escapeCsv).join(','));
+    }
+
+    const filename = `breakeven-appartamenti_${asOf}.csv`;
+    downloadCsv(filename, lines.join('\n'));
+  };
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -609,6 +687,15 @@ export default function BreakevenAppartamentiPage() {
             </div>
 
             <div className="flex items-center gap-2">
+              <button
+                onClick={exportCsv}
+                disabled={busy || loading || sorted.length === 0}
+                className="text-sm border rounded px-3 py-2 hover:bg-slate-50 disabled:opacity-50"
+                title={sorted.length === 0 ? 'Nessun dato da esportare con i filtri correnti' : 'Esporta CSV'}
+              >
+                Export CSV
+              </button>
+
               <button
                 onClick={copyLink}
                 disabled={busy || !shareUrl}
@@ -650,9 +737,7 @@ export default function BreakevenAppartamentiPage() {
             <Field label="Apartment">
               <Select
                 value={filters.apartmentId}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                  setFilters((p) => ({ ...p, apartmentId: e.target.value }))
-                }
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilters((p) => ({ ...p, apartmentId: e.target.value }))}
                 disabled={busy}
               >
                 <option value="">(all)</option>
@@ -731,7 +816,8 @@ export default function BreakevenAppartamentiPage() {
 
                 <tbody>
                   {sorted.map((r) => {
-                    const neg = (n: number) => (n < 0 ? 'text-green-700' : 'text-red-700');
+                    const posGreen = (n: number) => (n >= 0 ? 'text-green-700' : 'text-red-700');
+
                     return (
                       <tr key={r.apartmentId} className="border-b align-top">
                         <td className="py-2 pr-3">
@@ -757,15 +843,15 @@ export default function BreakevenAppartamentiPage() {
                         <td className="py-2 pr-3">{fmtMoney(r['Admin Attive'])}</td>
                         <td className="py-2 pr-3">{fmtMoney(r['Deposito Percepito'])}</td>
 
-                        <td className={`py-2 pr-3 font-semibold ${neg(r['Breakeven di Cassa'])}`}>
+                        <td className={`py-2 pr-3 font-semibold ${posGreen(r['Breakeven di Cassa'])}`}>
                           {fmtMoney(r['Breakeven di Cassa'])}
                         </td>
 
-                        <td className={`py-2 pr-3 font-semibold ${neg(r['Breakeven Economico'])}`}>
+                        <td className={`py-2 pr-3 font-semibold ${posGreen(r['Breakeven Economico'])}`}>
                           {fmtMoney(r['Breakeven Economico'])}
                         </td>
 
-                        <td className={`py-2 pr-3 font-semibold ${neg(r['Current Monthly Margin'])}`}>
+                        <td className={`py-2 pr-3 font-semibold ${posGreen(r['Current Monthly Margin'])}`}>
                           {fmtMoney(r['Current Monthly Margin'])}
                         </td>
                       </tr>
@@ -775,7 +861,8 @@ export default function BreakevenAppartamentiPage() {
               </table>
 
               <div className="text-xs text-slate-400 mt-3">
-                Nota: “attivo” = TENANT con startDate ≤ asOf ≤ endDate (se endDate manca, contratto aperto). Range somme: da min(startDate) dei contratti attivi dell’appartamento fino ad asOf.
+                Nota: “attivo” = TENANT con startDate ≤ asOf ≤ endDate (se endDate manca, contratto aperto). Range somme: da
+                min(startDate) dei contratti attivi dell’appartamento fino ad asOf.
               </div>
             </div>
           )}
