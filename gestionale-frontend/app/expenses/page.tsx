@@ -155,6 +155,7 @@ export default function ExpensesPage() {
 
   // quale expense ha documenti aperti
   const [openDocsExpenseId, setOpenDocsExpenseId] = useState<string | null>(null);
+  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
 
   const [form, setForm] = useState<CreateExpenseForm>({
     propertyId: '',
@@ -321,6 +322,7 @@ export default function ExpensesPage() {
   }, []);
 
   const resetForm = () => {
+    setEditingExpenseId(null);
     setForm({
       propertyId: '',
       type: '',
@@ -338,7 +340,31 @@ export default function ExpensesPage() {
     });
   };
 
-  const create = async () => {
+  const startEdit = (expense: any) => {
+    setError(null);
+    setEditingExpenseId(expense.id);
+    setForm({
+      propertyId: expense.propertyId ?? '',
+      type: expense.type ?? '',
+      description: expense.description ?? '',
+      amount: expense.amount == null ? '' : String(expense.amount),
+      currency: expense.currency ?? 'EUR',
+      costDate: toYmd(expense.costDate),
+      costMonth: expense.costMonth ?? monthFromDate(toYmd(expense.costDate)) ?? '',
+      frequency: (expense.frequency ?? '') as CreateExpenseForm['frequency'],
+      scope: (expense.scope ?? '') as CreateExpenseForm['scope'],
+      allocationMode: (expense.allocationMode ?? '') as CreateExpenseForm['allocationMode'],
+      status: (expense.status ?? 'PLANNED') as ExpenseStatus,
+      paidDate: toYmd(expense.paidDate),
+      notes: expense.notes ?? '',
+    });
+
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const saveExpense = async () => {
     setError(null);
 
     if (!form.propertyId) return setError('Seleziona una property');
@@ -349,6 +375,7 @@ export default function ExpensesPage() {
     if (amountNum === undefined || Number.isNaN(amountNum)) return setError('Importo non valido');
 
     const costMonth = cleanStr(form.costMonth) || monthFromDate(form.costDate) || undefined;
+    const resolvedPaidDate = cleanStr(form.paidDate) || (form.status === 'PAID' ? todayYmdUtc() : undefined);
 
     const body: any = {
       propertyId: form.propertyId,
@@ -366,15 +393,15 @@ export default function ExpensesPage() {
       allocationMode: form.allocationMode || undefined,
 
       status: form.status || 'PLANNED',
-      paidDate: cleanStr(form.paidDate) || undefined,
+      paidDate: resolvedPaidDate,
 
       notes: cleanStr(form.notes) || undefined,
     };
 
     setBusy(true);
     try {
-      await fetchWithAuth('/expenses', {
-        method: 'POST',
+      await fetchWithAuth(editingExpenseId ? `/expenses/${editingExpenseId}` : '/expenses', {
+        method: editingExpenseId ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
@@ -382,7 +409,32 @@ export default function ExpensesPage() {
       resetForm();
       await loadAll();
     } catch (e: any) {
-      setError(e?.message ?? 'Errore creazione spesa');
+      setError(e?.message ?? (editingExpenseId ? 'Errore aggiornamento spesa' : 'Errore creazione spesa'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const markAsPaid = async (expense: any) => {
+    setError(null);
+    setBusy(true);
+    try {
+      await fetchWithAuth(`/expenses/${expense.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'PAID',
+          paidDate: expense._paidYmd || todayYmdUtc(),
+        }),
+      });
+
+      if (editingExpenseId === expense.id) {
+        resetForm();
+      }
+
+      await loadAll();
+    } catch (e: any) {
+      setError(e?.message ?? 'Errore aggiornamento stato spesa');
     } finally {
       setBusy(false);
     }
@@ -727,9 +779,12 @@ export default function ExpensesPage() {
           </div>
         </div>
 
-        {/* CREATE FORM */}
+        {/* CREATE / EDIT FORM */}
         <div className="bg-white rounded-xl shadow p-4 space-y-3">
-          <h2 className="font-medium">Nuova spesa</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-medium">{editingExpenseId ? 'Modifica spesa' : 'Nuova spesa'}</h2>
+            {editingExpenseId && <div className="text-xs text-slate-500">Stai modificando: {editingExpenseId}</div>}
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Field label="Immobile" required>
@@ -850,11 +905,11 @@ export default function ExpensesPage() {
 
           <div className="flex items-center gap-3">
             <button
-              onClick={create}
+              onClick={saveExpense}
               disabled={busy}
               className="bg-slate-800 text-white px-4 py-2 rounded hover:bg-slate-700 disabled:opacity-50"
             >
-              {busy ? 'Salvataggio...' : 'Create'}
+              {busy ? 'Salvataggio...' : editingExpenseId ? 'Aggiorna' : 'Create'}
             </button>
 
             <button
@@ -863,7 +918,7 @@ export default function ExpensesPage() {
               disabled={busy}
               className="border px-4 py-2 rounded hover:bg-slate-50 disabled:opacity-50"
             >
-              Reset
+              {editingExpenseId ? 'Annulla modifica' : 'Reset'}
             </button>
           </div>
         </div>
@@ -932,13 +987,31 @@ export default function ExpensesPage() {
                         <div className="text-[11px] text-slate-400 mt-1">id: {x.id}</div>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap justify-end">
+                        {effectiveStatus !== 'PAID' && (
+                          <button
+                            onClick={() => markAsPaid(x)}
+                            className="border rounded-md px-3 py-2 text-sm bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                            disabled={busy}
+                          >
+                            Segna pagata
+                          </button>
+                        )}
+
                         <button
                           onClick={() => setOpenDocsExpenseId((prev) => (prev === x.id ? null : x.id))}
                           className="border rounded-md px-3 py-2 text-sm"
                           disabled={busy}
                         >
                           {docsOpen ? 'Chiudi documenti' : 'Documenti'}
+                        </button>
+
+                        <button
+                          onClick={() => startEdit(x)}
+                          disabled={busy}
+                          className="text-sm text-slate-700 hover:underline disabled:opacity-50"
+                        >
+                          Modifica
                         </button>
 
                         <button

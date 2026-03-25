@@ -20,10 +20,13 @@ export class CreateLeaseDto {
   @IsString()
   landlordId?: string;
 
+  @IsOptional()
+  @IsISO8601()
+  bookingDate?: string;
+
   @IsISO8601()
   startDate!: string;
 
-  // ✅ NOW REQUIRED
   @IsISO8601()
   endDate!: string;
 
@@ -46,7 +49,6 @@ export class CreateLeaseDto {
   @IsNumber()
   billsIncludedAmount?: number;
 
-  // --- CASHFLOWS EXTRA ---
   @IsOptional()
   @IsNumber()
   depositAmount?: number;

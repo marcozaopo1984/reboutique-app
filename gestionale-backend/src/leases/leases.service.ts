@@ -11,6 +11,7 @@ type LeaseDoc = {
   tenantId?: string;
   landlordId?: string;
 
+  bookingDate: Date;
   startDate: Date;
   endDate?: Date;
   nextPaymentDue?: Date;
@@ -248,6 +249,7 @@ export class LeasesService {
     }
 
     // ✅ parse date robusto (accetta solo string valide)
+    const bookingDate = dto.bookingDate ? this.requireDate(dto.bookingDate, 'bookingDate') : new Date();
     const startDate = this.requireDate(dto.startDate, 'startDate');
     const endDate = dto.endDate ? this.requireDate(dto.endDate, 'endDate') : undefined;
     const nextPaymentDue = dto.nextPaymentDue
@@ -260,6 +262,7 @@ export class LeasesService {
       tenantId: dto.tenantId,
       landlordId: dto.landlordId,
 
+      bookingDate,
       startDate,
       endDate,
       nextPaymentDue,

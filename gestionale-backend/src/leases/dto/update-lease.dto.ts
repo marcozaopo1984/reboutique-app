@@ -20,6 +20,10 @@ export class UpdateLeaseDto {
 
   @IsOptional()
   @IsISO8601()
+  bookingDate?: string;
+
+  @IsOptional()
+  @IsISO8601()
   startDate?: string;
 
   @IsOptional()

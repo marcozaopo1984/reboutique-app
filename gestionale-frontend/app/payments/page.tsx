@@ -147,6 +147,7 @@ export default function PaymentsPage() {
 
   // quale payment ha documenti aperti
   const [openDocsPaymentId, setOpenDocsPaymentId] = useState<string | null>(null);
+  const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
 
   const [form, setForm] = useState<CreatePaymentForm>({
     manualMode: false,
@@ -342,6 +343,7 @@ export default function PaymentsPage() {
   }, []);
 
   const resetForm = () => {
+    setEditingPaymentId(null);
     setForm({
       manualMode: false,
       leaseId: '',
@@ -355,7 +357,27 @@ export default function PaymentsPage() {
     });
   };
 
-  const create = async () => {
+  const startEdit = (payment: any) => {
+    setError(null);
+    setEditingPaymentId(payment.id);
+    setForm({
+      manualMode: !payment.leaseId,
+      leaseId: payment.leaseId ?? '',
+      tenantId: payment.tenantId ?? '',
+      propertyId: payment.propertyId ?? '',
+      dueDate: toYmd(payment.dueDate),
+      paidDate: toYmd(payment.paidDate),
+      amount: payment.amount == null ? '' : String(payment.amount),
+      kind: (payment.kind ?? 'RENT') as PaymentKind,
+      status: (payment.status ?? 'PLANNED') as PaymentStatus,
+    });
+
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const savePayment = async () => {
     setError(null);
 
     if (!cleanStr(form.amount)) return setError('Importo obbligatorio');
@@ -381,6 +403,7 @@ export default function PaymentsPage() {
     }
 
     const prop = properties.find((p) => p.id === derivedPropertyId);
+    const resolvedPaidDate = cleanStr(form.paidDate) || (form.status === 'PAID' ? todayYmdUtc() : undefined);
 
     const body: any = {
       leaseId: form.manualMode ? undefined : form.leaseId || undefined,
@@ -389,7 +412,7 @@ export default function PaymentsPage() {
       buildingId: prop?.buildingId ?? undefined,
 
       dueDate: form.dueDate,
-      paidDate: cleanStr(form.paidDate) || undefined,
+      paidDate: resolvedPaidDate,
 
       amount: amountNum,
       currency: 'EUR',
@@ -400,8 +423,8 @@ export default function PaymentsPage() {
 
     setBusy(true);
     try {
-      await fetchWithAuth('/payments', {
-        method: 'POST',
+      await fetchWithAuth(editingPaymentId ? `/payments/${editingPaymentId}` : '/payments', {
+        method: editingPaymentId ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
@@ -409,7 +432,32 @@ export default function PaymentsPage() {
       resetForm();
       await loadAll();
     } catch (e: any) {
-      setError(e?.message ?? 'Errore creazione pagamento');
+      setError(e?.message ?? (editingPaymentId ? 'Errore aggiornamento pagamento' : 'Errore creazione pagamento'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const markAsPaid = async (payment: any) => {
+    setError(null);
+    setBusy(true);
+    try {
+      await fetchWithAuth(`/payments/${payment.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'PAID',
+          paidDate: payment._paidYmd || todayYmdUtc(),
+        }),
+      });
+
+      if (editingPaymentId === payment.id) {
+        resetForm();
+      }
+
+      await loadAll();
+    } catch (e: any) {
+      setError(e?.message ?? 'Errore aggiornamento stato pagamento');
     } finally {
       setBusy(false);
     }
@@ -734,9 +782,12 @@ export default function PaymentsPage() {
           </div>
         </div>
 
-        {/* CREATE FORM */}
+        {/* CREATE / EDIT FORM */}
         <div className="bg-white rounded-xl shadow p-4 space-y-3">
-          <h2 className="font-medium">Nuovo pagamento</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-medium">{editingPaymentId ? 'Modifica pagamento' : 'Nuovo pagamento'}</h2>
+            {editingPaymentId && <div className="text-xs text-slate-500">Stai modificando: {editingPaymentId}</div>}
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Field label="Modalità">
@@ -843,11 +894,11 @@ export default function PaymentsPage() {
 
           <div className="flex items-center gap-3">
             <button
-              onClick={create}
+              onClick={savePayment}
               disabled={busy}
               className="bg-slate-800 text-white px-4 py-2 rounded hover:bg-slate-700 disabled:opacity-50"
             >
-              {busy ? 'Salvataggio...' : 'Create'}
+              {busy ? 'Salvataggio...' : editingPaymentId ? 'Aggiorna' : 'Create'}
             </button>
 
             <button
@@ -856,7 +907,7 @@ export default function PaymentsPage() {
               disabled={busy}
               className="border px-4 py-2 rounded hover:bg-slate-50 disabled:opacity-50"
             >
-              Reset
+              {editingPaymentId ? 'Annulla modifica' : 'Reset'}
             </button>
           </div>
         </div>
@@ -926,13 +977,31 @@ export default function PaymentsPage() {
                         <div className="text-[11px] text-slate-400 mt-1">id: {p.id}</div>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap justify-end">
+                        {effectiveStatus !== 'PAID' && (
+                          <button
+                            onClick={() => markAsPaid(p)}
+                            className="border rounded-md px-3 py-2 text-sm bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                            disabled={busy}
+                          >
+                            Segna incassato
+                          </button>
+                        )}
+
                         <button
                           onClick={() => setOpenDocsPaymentId((prev) => (prev === p.id ? null : p.id))}
                           className="border rounded-md px-3 py-2 text-sm"
                           disabled={busy}
                         >
                           {docsOpen ? 'Chiudi documenti' : 'Documenti'}
+                        </button>
+
+                        <button
+                          onClick={() => startEdit(p)}
+                          disabled={busy}
+                          className="text-sm text-slate-700 hover:underline disabled:opacity-50"
+                        >
+                          Modifica
                         </button>
 
                         <button

@@ -2,6 +2,8 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { FirebaseService } from '../firebase/firebase.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { UpdatePaymentDto } from './dto/update-payment.dto';
+import { CreatePaymentFileDto } from './dto/create-payment-file.dto';
+import * as admin from 'firebase-admin';
 
 @Injectable()
 export class PaymentsService {
@@ -12,6 +14,10 @@ export class PaymentsService {
       .collection('holders')
       .doc(holderId)
       .collection('payments');
+  }
+
+  private paymentFilesCollection(holderId: string, paymentId: string) {
+    return this.paymentsCollection(holderId).doc(paymentId).collection('files');
   }
 
   private propertiesDoc(holderId: string, propertyId: string) {
@@ -56,7 +62,6 @@ export class PaymentsService {
   async create(holderId: string, dto: CreatePaymentDto) {
     const col = this.paymentsCollection(holderId);
 
-    // ✅ se non arriva apartmentId, lo calcolo dal propertyId
     const apartmentId =
       dto.apartmentId ??
       (dto.propertyId ? await this.deriveApartmentId(holderId, dto.propertyId) : undefined);
@@ -85,7 +90,6 @@ export class PaymentsService {
     const snap = await ref.get();
     if (!snap.exists) throw new NotFoundException(`Payment ${paymentId} not found`);
 
-    // ✅ se aggiorno propertyId e non passo apartmentId, lo ricalcolo
     let apartmentId = dto.apartmentId;
     if (!apartmentId && dto.propertyId) {
       apartmentId = await this.deriveApartmentId(holderId, dto.propertyId);
@@ -106,6 +110,54 @@ export class PaymentsService {
     const ref = this.paymentsCollection(holderId).doc(paymentId);
     const snap = await ref.get();
     if (!snap.exists) throw new NotFoundException(`Payment ${paymentId} not found`);
+
+    await ref.delete();
+    return { success: true };
+  }
+
+  // ---- FILES ----
+  async addFile(holderId: string, paymentId: string, dto: CreatePaymentFileDto) {
+    const paymentRef = this.paymentsCollection(holderId).doc(paymentId);
+    const paymentSnap = await paymentRef.get();
+    if (!paymentSnap.exists) throw new NotFoundException(`Payment ${paymentId} not found`);
+
+    const filesCol = this.paymentFilesCollection(holderId, paymentId);
+    const data = this.clean({
+      ...dto,
+      createdAt: new Date(),
+    });
+
+    const ref = await filesCol.add(data);
+    const snap = await ref.get();
+    return { id: snap.id, ...(snap.data() as any) };
+  }
+
+  async listFiles(holderId: string, paymentId: string) {
+    const paymentRef = this.paymentsCollection(holderId).doc(paymentId);
+    const paymentSnap = await paymentRef.get();
+    if (!paymentSnap.exists) throw new NotFoundException(`Payment ${paymentId} not found`);
+
+    const snap = await this.paymentFilesCollection(holderId, paymentId).get();
+    return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+  }
+
+  async removeFile(holderId: string, paymentId: string, fileId: string) {
+    const filesCol = this.paymentFilesCollection(holderId, paymentId);
+    const ref = filesCol.doc(fileId);
+    const doc = await ref.get();
+    if (!doc.exists) throw new NotFoundException(`File ${fileId} not found`);
+
+    const data = doc.data() as any;
+    const storagePath: string | undefined = data?.storagePath ?? data?.path;
+
+    if (storagePath) {
+      try {
+        const bucket = admin.storage().bucket();
+        await bucket.file(storagePath).delete({ ignoreNotFound: true } as any);
+      } catch (err) {
+        console.error('Errore delete Storage file:', storagePath, (err as any)?.message ?? err);
+      }
+    }
 
     await ref.delete();
     return { success: true };

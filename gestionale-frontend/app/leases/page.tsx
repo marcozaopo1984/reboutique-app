@@ -19,6 +19,7 @@ type Lease = {
   tenantId?: string;
   landlordId?: string;
 
+  bookingDate: any;
   startDate: any;
   endDate: any; // ✅ ora trattiamola come obbligatoria anche in list
   nextPaymentDue?: any;
@@ -46,6 +47,7 @@ type CreateLeaseForm = {
   tenantId: string;
   landlordId: string;
 
+  bookingDate: string;
   startDate: string;
   endDate: string; // ✅ REQUIRED
   nextPaymentDue: string;
@@ -93,6 +95,8 @@ const toYmd = (v: any): string => {
   return '';
 };
 
+const todayYmd = () => new Date().toISOString().slice(0, 10);
+
 const addDaysYmd = (ymd: string, days: number) => {
   if (!ymd) return '';
   const d = new Date(ymd + 'T00:00:00.000Z');
@@ -129,6 +133,7 @@ export default function LeasesPage() {
     propertyId: '',
     tenantId: '',
     landlordId: '',
+    bookingDate: todayYmd(),
     startDate: '',
     endDate: '',
     nextPaymentDue: '',
@@ -213,6 +218,7 @@ export default function LeasesPage() {
       propertyId: '',
       tenantId: '',
       landlordId: '',
+      bookingDate: todayYmd(),
       startDate: '',
       endDate: '',
       nextPaymentDue: '',
@@ -264,6 +270,7 @@ export default function LeasesPage() {
       tenantId: form.type === 'TENANT' ? form.tenantId : undefined,
       landlordId: form.type === 'LANDLORD' ? form.landlordId : undefined,
 
+      bookingDate: cleanStr(form.bookingDate) || undefined,
       startDate: form.startDate,
       endDate: form.endDate, // ✅ required
       nextPaymentDue: cleanStr(form.nextPaymentDue) || undefined,
@@ -426,6 +433,15 @@ export default function LeasesPage() {
                   </option>
                 ))}
               </Select>
+            </Field>
+
+            <Field label="Booking date">
+              <Input
+                type="date"
+                value={form.bookingDate}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => onChange('bookingDate', e.target.value)}
+                disabled={busy}
+              />
             </Field>
 
             <Field label="Start date" required>
@@ -620,6 +636,7 @@ export default function LeasesPage() {
                 const tenantText = x.tenantId ? tenantLabel.get(x.tenantId) ?? x.tenantId : '';
                 const landlordText = x.landlordId ? landlordLabel.get(x.landlordId) ?? x.landlordId : '';
 
+                const booking = toYmd(x.bookingDate);
                 const start = toYmd(x.startDate);
                 const end = toYmd(x.endDate);
                 const nextDue = toYmd(x.nextPaymentDue);
@@ -644,7 +661,7 @@ export default function LeasesPage() {
                         </div>
 
                         <div className="text-xs text-slate-500 mt-1">
-                          start: {start || '-'}
+                          booking: {booking || '-'} · start: {start || '-'}
                           {end ? ` · end: ${end}` : ' · end: (missing)'}
                           {nextDue ? ` · nextDue: ${nextDue}` : ''}
                         </div>
