@@ -60,6 +60,73 @@ type CreateTenantForm = {
 
 const cleanStr = (s: string) => s.trim();
 
+const emptyForm = (): CreateTenantForm => ({
+  firstName: '',
+  lastName: '',
+  email: '',
+  phone: '',
+  birthday: '',
+  nationality: '',
+  euCitizen: '',
+  gender: '',
+  address: '',
+  taxCode: '',
+  documentType: '',
+  documentNumber: '',
+  school: '',
+  status: 'CURRENT',
+  notes: '',
+});
+
+const normalizeDateForInput = (value: any): string => {
+  if (!value) return '';
+
+  if (typeof value === 'string') {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    if (value.length >= 10) return value.slice(0, 10);
+    return '';
+  }
+
+  if (typeof value === 'object' && typeof value.toDate === 'function') {
+    const d = value.toDate();
+    if (d instanceof Date && !Number.isNaN(d.getTime())) {
+      return d.toISOString().slice(0, 10);
+    }
+  }
+
+  if (typeof value === 'object' && typeof value._seconds === 'number') {
+    const d = new Date(value._seconds * 1000);
+    if (!Number.isNaN(d.getTime())) {
+      return d.toISOString().slice(0, 10);
+    }
+  }
+
+  return '';
+};
+
+const tenantToForm = (tenant: Tenant): CreateTenantForm => ({
+  firstName: tenant.firstName ?? '',
+  lastName: tenant.lastName ?? '',
+  email: tenant.email ?? '',
+  phone: tenant.phone ?? '',
+  birthday: normalizeDateForInput(tenant.birthday),
+  nationality: tenant.nationality ?? '',
+  euCitizen:
+    typeof tenant.euCitizen === 'boolean'
+      ? tenant.euCitizen
+        ? 'yes'
+        : 'no'
+      : '',
+  gender: tenant.gender ?? '',
+  address: tenant.address ?? '',
+  taxCode: tenant.taxCode ?? '',
+  documentType: tenant.documentType ?? '',
+  documentNumber: tenant.documentNumber ?? '',
+  school: tenant.school ?? '',
+  status: tenant.status ?? 'CURRENT',
+  notes: tenant.notes ?? '',
+});
+
 export default function TenantsPage() {
   const [items, setItems] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,23 +136,10 @@ export default function TenantsPage() {
   // docs
   const [openDocsId, setOpenDocsId] = useState<string | null>(null);
 
-  const [form, setForm] = useState<CreateTenantForm>({
-    firstName: '',
-    lastName: '',
-    email: '',
-    phone: '',
-    birthday: '',
-    nationality: '',
-    euCitizen: '',
-    gender: '',
-    address: '',
-    taxCode: '',
-    documentType: '',
-    documentNumber: '',
-    school: '',
-    status: 'CURRENT',
-    notes: '',
-  });
+  // edit
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const [form, setForm] = useState<CreateTenantForm>(emptyForm());
 
   const onChange = (key: keyof CreateTenantForm, value: any) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -113,31 +167,11 @@ export default function TenantsPage() {
   }, []);
 
   const resetForm = () => {
-    setForm({
-      firstName: '',
-      lastName: '',
-      email: '',
-      phone: '',
-      birthday: '',
-      nationality: '',
-      euCitizen: '',
-      gender: '',
-      address: '',
-      taxCode: '',
-      documentType: '',
-      documentNumber: '',
-      school: '',
-      status: 'CURRENT',
-      notes: '',
-    });
+    setForm(emptyForm());
+    setEditingId(null);
   };
 
-  const create = async () => {
-    setError(null);
-
-    if (!cleanStr(form.firstName)) return setError('Nome obbligatorio');
-    if (!cleanStr(form.lastName)) return setError('Cognome obbligatorio');
-
+  const buildPayload = () => {
     const body: any = {
       firstName: cleanStr(form.firstName),
       lastName: cleanStr(form.lastName),
@@ -165,21 +199,47 @@ export default function TenantsPage() {
 
     if (form.gender) body.gender = form.gender;
 
+    return body;
+  };
+
+  const save = async () => {
+    setError(null);
+
+    if (!cleanStr(form.firstName)) return setError('Nome obbligatorio');
+    if (!cleanStr(form.lastName)) return setError('Cognome obbligatorio');
+
+    const body = buildPayload();
+
     setBusy(true);
     try {
-      await fetchWithAuth('/tenants', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+      if (editingId) {
+        await fetchWithAuth(`/tenants/${editingId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      } else {
+        await fetchWithAuth('/tenants', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      }
 
       resetForm();
       await loadAll();
     } catch (e: any) {
-      setError(e?.message ?? 'Errore creazione tenant');
+      setError(e?.message ?? (editingId ? 'Errore aggiornamento tenant' : 'Errore creazione tenant'));
     } finally {
       setBusy(false);
     }
+  };
+
+  const startEdit = (tenant: Tenant) => {
+    setError(null);
+    setEditingId(tenant.id);
+    setForm(tenantToForm(tenant));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const remove = async (id: string) => {
@@ -188,6 +248,9 @@ export default function TenantsPage() {
     try {
       await fetchWithAuth(`/tenants/${id}`, { method: 'DELETE' });
       setOpenDocsId((prev) => (prev === id ? null : prev));
+      if (editingId === id) {
+        resetForm();
+      }
       await loadAll();
     } catch (e: any) {
       setError(e?.message ?? 'Errore eliminazione tenant');
@@ -220,9 +283,18 @@ export default function TenantsPage() {
           </div>
         )}
 
-        {/* CREATE FORM */}
         <div className="bg-white rounded-xl shadow p-4 space-y-3">
-          <h2 className="font-medium">Nuovo tenant</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-medium">
+              {editingId ? 'Modifica tenant' : 'Nuovo tenant'}
+            </h2>
+
+            {editingId && (
+              <div className="text-xs text-slate-500">
+                ID in modifica: {editingId}
+              </div>
+            )}
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <Field label="Nome" required>
@@ -371,11 +443,11 @@ export default function TenantsPage() {
 
           <div className="flex items-center gap-3">
             <button
-              onClick={create}
+              onClick={save}
               disabled={busy}
               className="bg-slate-800 text-white px-4 py-2 rounded hover:bg-slate-700 disabled:opacity-50"
             >
-              {busy ? 'Salvataggio...' : 'Create'}
+              {busy ? 'Salvataggio...' : editingId ? 'Aggiorna' : 'Create'}
             </button>
 
             <button
@@ -384,12 +456,11 @@ export default function TenantsPage() {
               disabled={busy}
               className="border px-4 py-2 rounded hover:bg-slate-50 disabled:opacity-50"
             >
-              Reset
+              {editingId ? 'Annulla modifica' : 'Reset'}
             </button>
           </div>
         </div>
 
-        {/* LIST */}
         <div className="bg-white rounded-xl shadow p-4">
           <h2 className="font-medium mb-3">Elenco</h2>
 
@@ -401,14 +472,21 @@ export default function TenantsPage() {
             <div className="space-y-2">
               {items.map((t) => {
                 const docsOpen = openDocsId === t.id;
+                const isEditingThis = editingId === t.id;
 
                 return (
-                  <div key={t.id} className="border rounded-lg p-3">
+                  <div
+                    key={t.id}
+                    className={`border rounded-lg p-3 ${isEditingThis ? 'border-slate-800 bg-slate-50' : ''}`}
+                  >
                     <div className="flex justify-between gap-3">
                       <div className="min-w-0">
                         <div className="font-semibold truncate">
                           {fullName(t)}
                           {t.school ? <span className="text-xs text-slate-500"> · {t.school}</span> : null}
+                          {isEditingThis ? (
+                            <span className="text-xs text-blue-600 ml-2">[in modifica]</span>
+                          ) : null}
                         </div>
 
                         <div className="text-sm text-slate-600">
@@ -420,7 +498,7 @@ export default function TenantsPage() {
                           status: {t.status ?? 'CURRENT'}
                           {t.nationality ? ` · ${t.nationality}` : ''}
                           {typeof t.euCitizen === 'boolean' ? ` · UE: ${t.euCitizen ? 'Sì' : 'No'}` : ''}
-                          {t.birthday ? ` · nascita: ${t.birthday}` : ''}
+                          {t.birthday ? ` · nascita: ${normalizeDateForInput(t.birthday)}` : ''}
                           {t.gender ? ` · gender: ${t.gender}` : ''}
                         </div>
 
@@ -438,6 +516,14 @@ export default function TenantsPage() {
                       </div>
 
                       <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => startEdit(t)}
+                          disabled={busy}
+                          className="border rounded-md px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+                        >
+                          Modifica
+                        </button>
+
                         <button
                           onClick={() => setOpenDocsId((prev) => (prev === t.id ? null : t.id))}
                           className="border rounded-md px-3 py-2 text-sm"

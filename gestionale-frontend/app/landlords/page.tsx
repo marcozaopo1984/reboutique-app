@@ -39,6 +39,28 @@ type CreateLandlordForm = {
 
 const cleanStr = (s: string) => s.trim();
 
+const emptyForm = (): CreateLandlordForm => ({
+  name: '',
+  email: '',
+  phone: '',
+  taxCode: '',
+  vatNumber: '',
+  address: '',
+  notes: '',
+  status: 'ACTIVE',
+});
+
+const landlordToForm = (l: Landlord): CreateLandlordForm => ({
+  name: l.name ?? '',
+  email: l.email ?? '',
+  phone: l.phone ?? '',
+  taxCode: l.taxCode ?? '',
+  vatNumber: l.vatNumber ?? '',
+  address: l.address ?? '',
+  notes: l.notes ?? '',
+  status: l.status ?? 'ACTIVE',
+});
+
 export default function LandlordsPage() {
   const [items, setItems] = useState<Landlord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,17 +68,9 @@ export default function LandlordsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [openDocsId, setOpenDocsId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
-  const [form, setForm] = useState<CreateLandlordForm>({
-    name: '',
-    email: '',
-    phone: '',
-    taxCode: '',
-    vatNumber: '',
-    address: '',
-    notes: '',
-    status: 'ACTIVE',
-  });
+  const [form, setForm] = useState<CreateLandlordForm>(emptyForm());
 
   const onChange = (key: keyof CreateLandlordForm, value: any) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -84,24 +98,16 @@ export default function LandlordsPage() {
   }, []);
 
   const resetForm = () => {
-    setForm({
-      name: '',
-      email: '',
-      phone: '',
-      taxCode: '',
-      vatNumber: '',
-      address: '',
-      notes: '',
-      status: 'ACTIVE',
-    });
+    setForm(emptyForm());
+    setEditingId(null);
   };
 
-  const create = async () => {
-    setError(null);
+  const buildPayload = () => {
+    if (!cleanStr(form.name)) {
+      throw new Error('Nome obbligatorio');
+    }
 
-    if (!cleanStr(form.name)) return setError('Nome obbligatorio');
-
-    const body: any = {
+    return {
       name: cleanStr(form.name),
 
       email: cleanStr(form.email) || undefined,
@@ -115,22 +121,52 @@ export default function LandlordsPage() {
 
       status: form.status || 'ACTIVE',
     };
+  };
+
+  const save = async () => {
+    setError(null);
+
+    let body: any;
+    try {
+      body = buildPayload();
+    } catch (e: any) {
+      setError(e?.message ?? 'Dati non validi');
+      return;
+    }
 
     setBusy(true);
     try {
-      await fetchWithAuth('/landlords', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+      if (editingId) {
+        await fetchWithAuth(`/landlords/${editingId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      } else {
+        await fetchWithAuth('/landlords', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      }
 
       resetForm();
       await loadAll();
     } catch (e: any) {
-      setError(e?.message ?? 'Errore creazione landlord');
+      setError(
+        e?.message ??
+          (editingId ? 'Errore aggiornamento landlord' : 'Errore creazione landlord'),
+      );
     } finally {
       setBusy(false);
     }
+  };
+
+  const startEdit = (l: Landlord) => {
+    setError(null);
+    setEditingId(l.id);
+    setForm(landlordToForm(l));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const remove = async (id: string) => {
@@ -139,6 +175,7 @@ export default function LandlordsPage() {
     try {
       await fetchWithAuth(`/landlords/${id}`, { method: 'DELETE' });
       setOpenDocsId((prev) => (prev === id ? null : prev));
+      if (editingId === id) resetForm();
       await loadAll();
     } catch (e: any) {
       setError(e?.message ?? 'Errore eliminazione landlord');
@@ -171,9 +208,16 @@ export default function LandlordsPage() {
           </div>
         )}
 
-        {/* CREATE FORM */}
         <div className="bg-white rounded-xl shadow p-4 space-y-3">
-          <h2 className="font-medium">Nuovo landlord</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-medium">
+              {editingId ? 'Modifica landlord' : 'Nuovo landlord'}
+            </h2>
+
+            {editingId && (
+              <div className="text-xs text-slate-500">ID in modifica: {editingId}</div>
+            )}
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <Field label="Nome" required>
@@ -251,11 +295,11 @@ export default function LandlordsPage() {
 
           <div className="flex items-center gap-3">
             <button
-              onClick={create}
+              onClick={save}
               disabled={busy}
               className="bg-slate-800 text-white px-4 py-2 rounded hover:bg-slate-700 disabled:opacity-50"
             >
-              {busy ? 'Salvataggio...' : 'Create'}
+              {busy ? 'Salvataggio...' : editingId ? 'Aggiorna' : 'Create'}
             </button>
 
             <button
@@ -264,12 +308,11 @@ export default function LandlordsPage() {
               disabled={busy}
               className="border px-4 py-2 rounded hover:bg-slate-50 disabled:opacity-50"
             >
-              Reset
+              {editingId ? 'Annulla modifica' : 'Reset'}
             </button>
           </div>
         </div>
 
-        {/* LIST */}
         <div className="bg-white rounded-xl shadow p-4">
           <h2 className="font-medium mb-3">Elenco</h2>
 
@@ -281,12 +324,21 @@ export default function LandlordsPage() {
             <div className="space-y-2">
               {items.map((l) => {
                 const docsOpen = openDocsId === l.id;
+                const isEditingThis = editingId === l.id;
 
                 return (
-                  <div key={l.id} className="border rounded-lg p-3">
+                  <div
+                    key={l.id}
+                    className={`border rounded-lg p-3 ${isEditingThis ? 'border-slate-800 bg-slate-50' : ''}`}
+                  >
                     <div className="flex justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="font-semibold truncate">{label(l)}</div>
+                        <div className="font-semibold truncate">
+                          {label(l)}
+                          {isEditingThis ? (
+                            <span className="text-xs text-blue-600 ml-2">[in modifica]</span>
+                          ) : null}
+                        </div>
 
                         <div className="text-sm text-slate-600">
                           {l.email ? l.email : '-'}
@@ -306,6 +358,14 @@ export default function LandlordsPage() {
                       </div>
 
                       <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => startEdit(l)}
+                          disabled={busy}
+                          className="border rounded-md px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+                        >
+                          Modifica
+                        </button>
+
                         <button
                           onClick={() => setOpenDocsId((prev) => (prev === l.id ? null : l.id))}
                           className="border rounded-md px-3 py-2 text-sm"

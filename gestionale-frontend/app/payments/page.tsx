@@ -20,7 +20,7 @@ type Payment = {
   leaseId?: string;
   buildingId?: string;
 
-  dueDate: any; // string | Timestamp | Date
+  dueDate: any;
   paidDate?: any;
 
   amount: number;
@@ -33,14 +33,14 @@ type Payment = {
 type CreatePaymentForm = {
   manualMode: boolean;
 
-  leaseId: string; // usato se !manualMode
-  tenantId: string; // usato se manualMode
-  propertyId: string; // usato se manualMode
+  leaseId: string;
+  tenantId: string;
+  propertyId: string;
 
-  dueDate: string; // YYYY-MM-DD
-  paidDate: string; // '' oppure YYYY-MM-DD
+  dueDate: string;
+  paidDate: string;
 
-  amount: string; // required
+  amount: string;
   kind: PaymentKind;
   status: PaymentStatus;
 };
@@ -55,7 +55,7 @@ type Filters = {
   leaseId: string;
   kind: string;
   status: string;
-  month: string; // YYYY-MM
+  month: string;
   onlyManual: boolean;
   onlyOverdueComputed: boolean;
 };
@@ -66,7 +66,6 @@ const toNum = (v: string) => {
   return s === '' ? undefined : Number(s);
 };
 
-// ---- date helpers robusti (string | Date | Firestore Timestamp) ----
 const toYmd = (v: any): string => {
   if (!v) return '';
   if (typeof v === 'string') return v.length >= 10 ? v.slice(0, 10) : v;
@@ -100,7 +99,6 @@ const fmtStatus = (s: string) => {
   return s;
 };
 
-// ---- querystring helpers ----
 const parseBool = (v: string | null) => v === '1' || v === 'true';
 
 const pickSortKey = (v: string | null): SortKey => {
@@ -113,12 +111,6 @@ const pickSortDir = (v: string | null): SortDir => {
   return 'desc';
 };
 
-/**
- * ✅ Robust: l'Input custom a volte chiama onChange con:
- * - event (React.ChangeEvent<HTMLInputElement>)
- * - direttamente la stringa (value)
- * Qui normalizziamo SEMPRE a string.
- */
 const valueFromInputChange = (arg: unknown): string => {
   if (typeof arg === 'string') return arg;
   if (typeof arg === 'number') return String(arg);
@@ -145,7 +137,6 @@ export default function PaymentsPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // quale payment ha documenti aperti
   const [openDocsPaymentId, setOpenDocsPaymentId] = useState<string | null>(null);
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
 
@@ -161,7 +152,6 @@ export default function PaymentsPage() {
     status: 'PLANNED',
   });
 
-  // ✅ filtri + sort
   const [filters, setFilters] = useState<Filters>({
     q: '',
     tenantId: '',
@@ -177,7 +167,6 @@ export default function PaymentsPage() {
   const [sortKey, setSortKey] = useState<SortKey>('dueDate');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
 
-  // ---- init from URL (once) ----
   useEffect(() => {
     if (didInitFromUrl.current) return;
 
@@ -209,10 +198,8 @@ export default function PaymentsPage() {
     setSortDir(sd);
 
     didInitFromUrl.current = true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [searchParams]);
 
-  // ---- build current shareable URL ----
   const shareUrl = useMemo(() => {
     const sp = new URLSearchParams();
 
@@ -251,7 +238,6 @@ export default function PaymentsPage() {
     }
   };
 
-  // ---- push state to URL ----
   useEffect(() => {
     if (!didInitFromUrl.current) return;
 
@@ -275,7 +261,6 @@ export default function PaymentsPage() {
     router.replace(qs ? `${pathname}?${qs}` : pathname);
   }, [filters, sortKey, sortDir, router, pathname]);
 
-  // ---- form helpers robusti per Input ----
   const onChange = (key: keyof CreatePaymentForm, value: string | boolean) => {
     setForm((prev) => ({ ...prev, [key]: value } as CreatePaymentForm));
   };
@@ -306,7 +291,6 @@ export default function PaymentsPage() {
   }, [properties]);
 
   const leaseLabel = useMemo(() => {
-    // label: tenant -> property (leaseId)
     const m = new Map<string, string>();
     for (const l of leases) {
       const t = l.tenantId ? tenantLabel.get(l.tenantId) ?? l.tenantId : '(tenant?)';
@@ -403,7 +387,8 @@ export default function PaymentsPage() {
     }
 
     const prop = properties.find((p) => p.id === derivedPropertyId);
-    const resolvedPaidDate = cleanStr(form.paidDate) || (form.status === 'PAID' ? todayYmdUtc() : undefined);
+    const resolvedPaidDate =
+      cleanStr(form.paidDate) || (form.status === 'PAID' ? todayYmdUtc() : undefined);
 
     const body: any = {
       leaseId: form.manualMode ? undefined : form.leaseId || undefined,
@@ -432,7 +417,10 @@ export default function PaymentsPage() {
       resetForm();
       await loadAll();
     } catch (e: any) {
-      setError(e?.message ?? (editingPaymentId ? 'Errore aggiornamento pagamento' : 'Errore creazione pagamento'));
+      setError(
+        e?.message ??
+          (editingPaymentId ? 'Errore aggiornamento pagamento' : 'Errore creazione pagamento'),
+      );
     } finally {
       setBusy(false);
     }
@@ -469,6 +457,9 @@ export default function PaymentsPage() {
     try {
       await fetchWithAuth(`/payments/${id}`, { method: 'DELETE' });
       setOpenDocsPaymentId((prev) => (prev === id ? null : prev));
+      if (editingPaymentId === id) {
+        resetForm();
+      }
       await loadAll();
     } catch (e: any) {
       setError(e?.message ?? 'Errore eliminazione pagamento');
@@ -477,9 +468,6 @@ export default function PaymentsPage() {
     }
   };
 
-  // -------------------------
-  // Derived / computed UI fields
-  // -------------------------
   const enriched = useMemo(() => {
     const today = todayYmdUtc();
     return items.map((p) => {
@@ -610,9 +598,12 @@ export default function PaymentsPage() {
           </button>
         </header>
 
-        {error && <div className="mb-2 bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded">{error}</div>}
+        {error && (
+          <div className="mb-2 bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded">
+            {error}
+          </div>
+        )}
 
-        {/* FILTERS + KPI */}
         <div className="bg-white rounded-xl shadow p-4 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -782,7 +773,6 @@ export default function PaymentsPage() {
           </div>
         </div>
 
-        {/* CREATE / EDIT FORM */}
         <div className="bg-white rounded-xl shadow p-4 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <h2 className="font-medium">{editingPaymentId ? 'Modifica pagamento' : 'Nuovo pagamento'}</h2>
@@ -862,7 +852,6 @@ export default function PaymentsPage() {
               </>
             )}
 
-            {/* ✅ QUI NON PASSI PIU' un ChangeEvent tipizzato: è robusto */}
             <Field label="Due date" required>
               <Input type="date" value={form.dueDate} onChange={handleInput('dueDate')} disabled={busy} />
             </Field>
@@ -912,7 +901,6 @@ export default function PaymentsPage() {
           </div>
         </div>
 
-        {/* LIST */}
         <div className="bg-white rounded-xl shadow p-4">
           <div className="flex items-center justify-between gap-3 mb-3">
             <h2 className="font-medium">Elenco</h2>
@@ -931,6 +919,7 @@ export default function PaymentsPage() {
             <div className="space-y-2">
               {sorted.map((p: any) => {
                 const docsOpen = openDocsPaymentId === p.id;
+                const isEditingThis = editingPaymentId === p.id;
 
                 const tName = tenantLabel.get(p.tenantId) ?? p.tenantId;
                 const propText = propertyLabel.get(p.propertyId) ?? p.propertyId;
@@ -949,11 +938,17 @@ export default function PaymentsPage() {
                       : 'bg-slate-50 text-slate-700 border-slate-200';
 
                 return (
-                  <div key={p.id} className="border rounded-lg p-3">
+                  <div
+                    key={p.id}
+                    className={`border rounded-lg p-3 ${isEditingThis ? 'border-slate-800 bg-slate-50' : ''}`}
+                  >
                     <div className="flex justify-between gap-3">
                       <div className="min-w-0">
                         <div className="font-semibold truncate">
                           {tName} → {propText}
+                          {isEditingThis ? (
+                            <span className="text-xs text-blue-600 ml-2">[in modifica]</span>
+                          ) : null}
                         </div>
 
                         <div className="text-sm text-slate-600 flex flex-wrap items-center gap-2">
@@ -989,19 +984,19 @@ export default function PaymentsPage() {
                         )}
 
                         <button
+                          onClick={() => startEdit(p)}
+                          disabled={busy}
+                          className="border rounded-md px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+                        >
+                          Modifica
+                        </button>
+
+                        <button
                           onClick={() => setOpenDocsPaymentId((prev) => (prev === p.id ? null : p.id))}
                           className="border rounded-md px-3 py-2 text-sm"
                           disabled={busy}
                         >
                           {docsOpen ? 'Chiudi documenti' : 'Documenti'}
-                        </button>
-
-                        <button
-                          onClick={() => startEdit(p)}
-                          disabled={busy}
-                          className="text-sm text-slate-700 hover:underline disabled:opacity-50"
-                        >
-                          Modifica
                         </button>
 
                         <button

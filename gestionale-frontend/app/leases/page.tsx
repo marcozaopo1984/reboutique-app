@@ -21,7 +21,7 @@ type Lease = {
 
   bookingDate: any;
   startDate: any;
-  endDate: any; // ✅ ora trattiamola come obbligatoria anche in list
+  endDate: any;
   nextPaymentDue?: any;
 
   monthlyRentWithoutBills: number;
@@ -31,7 +31,9 @@ type Lease = {
   dueDayOfMonth?: number;
 
   depositAmount?: number;
+  depositDate?: any;
   adminFeeAmount?: number;
+  adminFeeDate?: any;
 
   bookingCostAmount?: number;
   bookingCostDate?: any;
@@ -49,7 +51,7 @@ type CreateLeaseForm = {
 
   bookingDate: string;
   startDate: string;
-  endDate: string; // ✅ REQUIRED
+  endDate: string;
   nextPaymentDue: string;
 
   monthlyRentWithoutBills: string;
@@ -59,7 +61,9 @@ type CreateLeaseForm = {
   dueDayOfMonth: string;
 
   depositAmount: string;
+  depositDate: string;
   adminFeeAmount: string;
+  adminFeeDate: string;
 
   bookingCostAmount: string;
   bookingCostDate: string;
@@ -74,6 +78,12 @@ const toNum = (v: string) => {
   if (!s) return undefined;
   const n = Number(s);
   return Number.isNaN(n) ? undefined : n;
+};
+
+const toNumString = (v: any) => {
+  if (v === undefined || v === null) return '';
+  const n = Number(v);
+  return Number.isNaN(n) ? '' : String(n);
 };
 
 const toYmd = (v: any): string => {
@@ -116,6 +126,72 @@ const ymdLessThan = (a: string, b: string) => {
   return new Date(a + 'T00:00:00.000Z').getTime() < new Date(b + 'T00:00:00.000Z').getTime();
 };
 
+const syncExtraDatesFromBooking = (
+  prev: CreateLeaseForm,
+  newBookingDate: string,
+): Pick<CreateLeaseForm, 'bookingDate' | 'depositDate' | 'adminFeeDate' | 'bookingCostDate' | 'registrationTaxDate'> => ({
+  bookingDate: newBookingDate,
+  depositDate: !prev.depositDate || prev.depositDate === prev.bookingDate ? newBookingDate : prev.depositDate,
+  adminFeeDate: !prev.adminFeeDate || prev.adminFeeDate === prev.bookingDate ? newBookingDate : prev.adminFeeDate,
+  bookingCostDate: !prev.bookingCostDate || prev.bookingCostDate === prev.bookingDate ? newBookingDate : prev.bookingCostDate,
+  registrationTaxDate:
+    !prev.registrationTaxDate || prev.registrationTaxDate === prev.bookingDate
+      ? newBookingDate
+      : prev.registrationTaxDate,
+});
+
+const emptyForm = (): CreateLeaseForm => {
+  const today = todayYmd();
+  return {
+    type: 'TENANT',
+    propertyId: '',
+    tenantId: '',
+    landlordId: '',
+    bookingDate: today,
+    startDate: '',
+    endDate: '',
+    nextPaymentDue: '',
+    monthlyRentWithoutBills: '',
+    monthlyRentWithBills: '',
+    billsIncludedAmount: '',
+    dueDayOfMonth: '',
+    depositAmount: '',
+    depositDate: today,
+    adminFeeAmount: '',
+    adminFeeDate: today,
+    bookingCostAmount: '',
+    bookingCostDate: today,
+    registrationTaxAmount: '',
+    registrationTaxDate: today,
+  };
+};
+
+const leaseToForm = (x: Lease): CreateLeaseForm => {
+  const booking = toYmd(x.bookingDate) || todayYmd();
+  return {
+    type: x.type ?? 'TENANT',
+    propertyId: x.propertyId ?? '',
+    tenantId: x.tenantId ?? '',
+    landlordId: x.landlordId ?? '',
+    bookingDate: booking,
+    startDate: toYmd(x.startDate),
+    endDate: toYmd(x.endDate),
+    nextPaymentDue: toYmd(x.nextPaymentDue),
+    monthlyRentWithoutBills: toNumString(x.monthlyRentWithoutBills),
+    monthlyRentWithBills: toNumString(x.monthlyRentWithBills),
+    billsIncludedAmount: toNumString(x.billsIncludedAmount),
+    dueDayOfMonth: toNumString(x.dueDayOfMonth),
+    depositAmount: toNumString(x.depositAmount),
+    depositDate: toYmd(x.depositDate) || booking,
+    adminFeeAmount: toNumString(x.adminFeeAmount),
+    adminFeeDate: toYmd(x.adminFeeDate) || booking,
+    bookingCostAmount: toNumString(x.bookingCostAmount),
+    bookingCostDate: toYmd(x.bookingCostDate) || booking,
+    registrationTaxAmount: toNumString(x.registrationTaxAmount),
+    registrationTaxDate: toYmd(x.registrationTaxDate) || booking,
+  };
+};
+
 export default function LeasesPage() {
   const [items, setItems] = useState<Lease[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -127,27 +203,9 @@ export default function LeasesPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [openDocsLeaseId, setOpenDocsLeaseId] = useState<string | null>(null);
+  const [editingLeaseId, setEditingLeaseId] = useState<string | null>(null);
 
-  const [form, setForm] = useState<CreateLeaseForm>({
-    type: 'TENANT',
-    propertyId: '',
-    tenantId: '',
-    landlordId: '',
-    bookingDate: todayYmd(),
-    startDate: '',
-    endDate: '',
-    nextPaymentDue: '',
-    monthlyRentWithoutBills: '',
-    monthlyRentWithBills: '',
-    billsIncludedAmount: '',
-    dueDayOfMonth: '',
-    depositAmount: '',
-    adminFeeAmount: '',
-    bookingCostAmount: '',
-    bookingCostDate: '',
-    registrationTaxAmount: '',
-    registrationTaxDate: '',
-  });
+  const [form, setForm] = useState<CreateLeaseForm>(emptyForm());
 
   const onChange = (key: keyof CreateLeaseForm, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -213,26 +271,8 @@ export default function LeasesPage() {
   }, []);
 
   const resetForm = () => {
-    setForm({
-      type: 'TENANT',
-      propertyId: '',
-      tenantId: '',
-      landlordId: '',
-      bookingDate: todayYmd(),
-      startDate: '',
-      endDate: '',
-      nextPaymentDue: '',
-      monthlyRentWithoutBills: '',
-      monthlyRentWithBills: '',
-      billsIncludedAmount: '',
-      dueDayOfMonth: '',
-      depositAmount: '',
-      adminFeeAmount: '',
-      bookingCostAmount: '',
-      bookingCostDate: '',
-      registrationTaxAmount: '',
-      registrationTaxDate: '',
-    });
+    setEditingLeaseId(null);
+    setForm(emptyForm());
   };
 
   const validateForm = (): string | null => {
@@ -255,15 +295,10 @@ export default function LeasesPage() {
     return null;
   };
 
-  const create = async () => {
-    setError(null);
-
-    const err = validateForm();
-    if (err) return setError(err);
-
+  const buildBody = () => {
     const net = toNum(form.monthlyRentWithoutBills)!;
 
-    const body: any = {
+    return {
       type: form.type,
       propertyId: form.propertyId,
 
@@ -272,7 +307,7 @@ export default function LeasesPage() {
 
       bookingDate: cleanStr(form.bookingDate) || undefined,
       startDate: form.startDate,
-      endDate: form.endDate, // ✅ required
+      endDate: form.endDate,
       nextPaymentDue: cleanStr(form.nextPaymentDue) || undefined,
 
       monthlyRentWithoutBills: net,
@@ -282,7 +317,9 @@ export default function LeasesPage() {
       dueDayOfMonth: toNum(form.dueDayOfMonth),
 
       depositAmount: toNum(form.depositAmount),
+      depositDate: cleanStr(form.depositDate) || undefined,
       adminFeeAmount: toNum(form.adminFeeAmount),
+      adminFeeDate: cleanStr(form.adminFeeDate) || undefined,
 
       bookingCostAmount: toNum(form.bookingCostAmount),
       bookingCostDate: cleanStr(form.bookingCostDate) || undefined,
@@ -290,11 +327,20 @@ export default function LeasesPage() {
       registrationTaxAmount: toNum(form.registrationTaxAmount),
       registrationTaxDate: cleanStr(form.registrationTaxDate) || undefined,
     };
+  };
+
+  const saveLease = async () => {
+    setError(null);
+
+    const err = validateForm();
+    if (err) return setError(err);
+
+    const body = buildBody();
 
     setBusy(true);
     try {
-      await fetchWithAuth('/leases', {
-        method: 'POST',
+      await fetchWithAuth(editingLeaseId ? `/leases/${editingLeaseId}` : '/leases', {
+        method: editingLeaseId ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
@@ -302,9 +348,19 @@ export default function LeasesPage() {
       resetForm();
       await loadAll();
     } catch (e: any) {
-      setError(e?.message ?? 'Errore creazione lease');
+      setError(e?.message ?? (editingLeaseId ? 'Errore aggiornamento lease' : 'Errore creazione lease'));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const startEdit = (lease: Lease) => {
+    setError(null);
+    setEditingLeaseId(lease.id);
+    setForm(leaseToForm(lease));
+
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
@@ -314,6 +370,9 @@ export default function LeasesPage() {
     try {
       await fetchWithAuth(`/leases/${id}`, { method: 'DELETE' });
       setOpenDocsLeaseId((prev) => (prev === id ? null : prev));
+      if (editingLeaseId === id) {
+        resetForm();
+      }
       await loadAll();
     } catch (e: any) {
       setError(e?.message ?? 'Errore eliminazione lease');
@@ -363,7 +422,15 @@ export default function LeasesPage() {
         )}
 
         <div className="bg-white rounded-xl shadow p-4 space-y-3">
-          <h2 className="font-medium">Nuovo contratto</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-medium">
+              {editingLeaseId ? 'Modifica contratto' : 'Nuovo contratto'}
+            </h2>
+
+            {editingLeaseId && (
+              <div className="text-xs text-slate-500">ID in modifica: {editingLeaseId}</div>
+            )}
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <Field label="Type" required>
@@ -376,6 +443,12 @@ export default function LeasesPage() {
                     type: v,
                     tenantId: '',
                     landlordId: '',
+                    propertyId:
+                      v === 'LANDLORD'
+                        ? properties.find((p) => p.id === prev.propertyId)?.type === 'APARTMENT'
+                          ? prev.propertyId
+                          : ''
+                        : prev.propertyId,
                   }));
                 }}
                 disabled={busy}
@@ -439,7 +512,13 @@ export default function LeasesPage() {
               <Input
                 type="date"
                 value={form.bookingDate}
-                onChange={(e: ChangeEvent<HTMLInputElement>) => onChange('bookingDate', e.target.value)}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                  const nextBooking = e.target.value;
+                  setForm((prev) => ({
+                    ...prev,
+                    ...syncExtraDatesFromBooking(prev, nextBooking),
+                  }));
+                }}
                 disabled={busy}
               />
             </Field>
@@ -453,9 +532,7 @@ export default function LeasesPage() {
                   setForm((prev) => ({
                     ...prev,
                     startDate: v,
-                    // se nextPaymentDue è vuoto, lo auto-setto per comodità
                     nextPaymentDue: prev.nextPaymentDue || v,
-                    // se endDate è valorizzata ma diventa < start, la resetto
                     endDate: prev.endDate && ymdLessThan(prev.endDate, v) ? '' : prev.endDate,
                   }));
                 }}
@@ -526,7 +603,7 @@ export default function LeasesPage() {
             </Field>
 
             <div className="md:col-span-3 border-t pt-3 mt-1">
-              <div className="text-sm font-medium mb-2">Cashflow extra (TENANT)</div>
+              <div className="text-sm font-medium mb-2">Cashflow extra</div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <Field label="Deposit amount">
@@ -535,9 +612,20 @@ export default function LeasesPage() {
                     value={form.depositAmount}
                     onChange={(e: ChangeEvent<HTMLInputElement>) => onChange('depositAmount', e.target.value)}
                     placeholder="2200"
-                    disabled={busy || form.type !== 'TENANT'}
+                    disabled={busy}
                   />
                 </Field>
+
+                <Field label="Deposit date">
+                  <Input
+                    type="date"
+                    value={form.depositDate}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => onChange('depositDate', e.target.value)}
+                    disabled={busy}
+                  />
+                </Field>
+
+                <div className="hidden md:block" />
 
                 <Field label="Admin fee amount">
                   <Input
@@ -545,7 +633,16 @@ export default function LeasesPage() {
                     value={form.adminFeeAmount}
                     onChange={(e: ChangeEvent<HTMLInputElement>) => onChange('adminFeeAmount', e.target.value)}
                     placeholder="200"
-                    disabled={busy || form.type !== 'TENANT'}
+                    disabled={busy}
+                  />
+                </Field>
+
+                <Field label="Admin fee date">
+                  <Input
+                    type="date"
+                    value={form.adminFeeDate}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => onChange('adminFeeDate', e.target.value)}
+                    disabled={busy}
                   />
                 </Field>
 
@@ -557,7 +654,7 @@ export default function LeasesPage() {
                     value={form.bookingCostAmount}
                     onChange={(e: ChangeEvent<HTMLInputElement>) => onChange('bookingCostAmount', e.target.value)}
                     placeholder="150"
-                    disabled={busy || form.type !== 'TENANT'}
+                    disabled={busy}
                   />
                 </Field>
 
@@ -566,7 +663,7 @@ export default function LeasesPage() {
                     type="date"
                     value={form.bookingCostDate}
                     onChange={(e: ChangeEvent<HTMLInputElement>) => onChange('bookingCostDate', e.target.value)}
-                    disabled={busy || form.type !== 'TENANT'}
+                    disabled={busy}
                   />
                 </Field>
 
@@ -578,7 +675,7 @@ export default function LeasesPage() {
                     value={form.registrationTaxAmount}
                     onChange={(e: ChangeEvent<HTMLInputElement>) => onChange('registrationTaxAmount', e.target.value)}
                     placeholder="67"
-                    disabled={busy || form.type !== 'TENANT'}
+                    disabled={busy}
                   />
                 </Field>
 
@@ -587,26 +684,20 @@ export default function LeasesPage() {
                     type="date"
                     value={form.registrationTaxDate}
                     onChange={(e: ChangeEvent<HTMLInputElement>) => onChange('registrationTaxDate', e.target.value)}
-                    disabled={busy || form.type !== 'TENANT'}
+                    disabled={busy}
                   />
                 </Field>
               </div>
-
-              {form.type !== 'TENANT' && (
-                <div className="text-xs text-slate-500 mt-2">
-                  (Per ora questi campi hanno senso solo per TENANT, quindi sono disabilitati per LANDLORD.)
-                </div>
-              )}
             </div>
           </div>
 
           <div className="flex items-center gap-3">
             <button
-              onClick={create}
+              onClick={saveLease}
               disabled={busy}
               className="bg-slate-800 text-white px-4 py-2 rounded hover:bg-slate-700 disabled:opacity-50"
             >
-              {busy ? 'Salvataggio...' : 'Create'}
+              {busy ? 'Salvataggio...' : editingLeaseId ? 'Aggiorna' : 'Create'}
             </button>
 
             <button
@@ -615,7 +706,7 @@ export default function LeasesPage() {
               disabled={busy}
               className="border px-4 py-2 rounded hover:bg-slate-50 disabled:opacity-50"
             >
-              Reset
+              {editingLeaseId ? 'Annulla modifica' : 'Reset'}
             </button>
           </div>
         </div>
@@ -631,6 +722,7 @@ export default function LeasesPage() {
             <div className="space-y-2">
               {items.map((x) => {
                 const docsOpen = openDocsLeaseId === x.id;
+                const isEditingThis = editingLeaseId === x.id;
 
                 const propText = propertyLabel.get(x.propertyId) ?? x.propertyId;
                 const tenantText = x.tenantId ? tenantLabel.get(x.tenantId) ?? x.tenantId : '';
@@ -641,16 +733,26 @@ export default function LeasesPage() {
                 const end = toYmd(x.endDate);
                 const nextDue = toYmd(x.nextPaymentDue);
 
+                const depositDate = toYmd(x.depositDate) || booking;
+                const adminFeeDate = toYmd(x.adminFeeDate) || booking;
+                const bookingCostDate = toYmd(x.bookingCostDate) || booking || start;
+                const registrationTaxDate = toYmd(x.registrationTaxDate) || booking || start;
                 const depositRefundDate = end ? addDaysYmd(end, 60) : '';
 
                 return (
-                  <div key={x.id} className="border rounded-lg p-3">
+                  <div
+                    key={x.id}
+                    className={`border rounded-lg p-3 ${isEditingThis ? 'border-slate-800 bg-slate-50' : ''}`}
+                  >
                     <div className="flex justify-between gap-3">
                       <div className="min-w-0">
                         <div className="font-semibold truncate">
                           {x.type} · {propText}
                           {x.type === 'TENANT' && tenantText ? ` · tenant: ${tenantText}` : ''}
                           {x.type === 'LANDLORD' && landlordText ? ` · landlord: ${landlordText}` : ''}
+                          {isEditingThis ? (
+                            <span className="text-xs text-blue-600 ml-2">[in modifica]</span>
+                          ) : null}
                         </div>
 
                         <div className="text-sm text-slate-600">
@@ -666,25 +768,34 @@ export default function LeasesPage() {
                           {nextDue ? ` · nextDue: ${nextDue}` : ''}
                         </div>
 
-                        {x.type === 'TENANT' && (
-                          <div className="text-xs text-slate-500 mt-1">
-                            {x.depositAmount
-                              ? `deposit: ${x.depositAmount} € (refund: ${depositRefundDate || 'n/a'})`
-                              : 'deposit: -'}
-                            {x.adminFeeAmount ? ` · adminFee: ${x.adminFeeAmount} €` : ''}
-                            {x.bookingCostAmount
-                              ? ` · bookingCost: ${x.bookingCostAmount} € (${toYmd(x.bookingCostDate) || start || 'start'})`
-                              : ''}
-                            {x.registrationTaxAmount
-                              ? ` · regTax: ${x.registrationTaxAmount} € (${toYmd(x.registrationTaxDate) || start || 'start'})`
-                              : ''}
-                          </div>
-                        )}
+                        <div className="text-xs text-slate-500 mt-1">
+                          {x.depositAmount
+                            ? `deposit: ${x.depositAmount} € (${depositDate || 'n/a'})`
+                            : 'deposit: -'}
+                          {x.type === 'TENANT' && x.depositAmount && depositRefundDate
+                            ? ` · refund: ${depositRefundDate}`
+                            : ''}
+                          {x.adminFeeAmount ? ` · adminFee: ${x.adminFeeAmount} € (${adminFeeDate || 'n/a'})` : ''}
+                          {x.bookingCostAmount
+                            ? ` · bookingCost: ${x.bookingCostAmount} € (${bookingCostDate || 'n/a'})`
+                            : ''}
+                          {x.registrationTaxAmount
+                            ? ` · regTax: ${x.registrationTaxAmount} € (${registrationTaxDate || 'n/a'})`
+                            : ''}
+                        </div>
 
                         <div className="text-[11px] text-slate-400 mt-1">id: {x.id}</div>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap justify-end">
+                        <button
+                          onClick={() => startEdit(x)}
+                          disabled={busy}
+                          className="border rounded-md px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+                        >
+                          Modifica
+                        </button>
+
                         <button
                           onClick={() => generateSchedule(x.id)}
                           className="border rounded-md px-3 py-2 text-sm"

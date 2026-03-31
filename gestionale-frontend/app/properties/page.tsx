@@ -20,10 +20,7 @@ type Property = {
 
   isPublished?: boolean;
 
-  // ✅ NEW
   apartmentId?: string;
-
-  // (se lo usi nel backend / payments schedule)
   buildingId?: string;
 };
 
@@ -40,18 +37,51 @@ type CreatePropertyForm = {
 
   isPublished: boolean;
 
-  // ✅ NEW
   apartmentId: string;
-
-  // opzionale
   buildingId: string;
 };
 
 const cleanStr = (s: string) => s.trim();
+
 const toNum = (v: string) => {
   const s = cleanStr(v);
   return s === '' ? undefined : Number(s);
 };
+
+const numToString = (v: number | undefined) =>
+  v === undefined || v === null ? '' : String(v);
+
+const emptyForm = (): CreatePropertyForm => ({
+  code: '',
+  name: '',
+  address: '',
+  type: 'ROOM',
+
+  baseMonthlyRent: '',
+  monthlyUtilities: '',
+  depositMonths: '',
+
+  isPublished: true,
+
+  apartmentId: '',
+  buildingId: '',
+});
+
+const propertyToForm = (p: Property): CreatePropertyForm => ({
+  code: p.code ?? '',
+  name: p.name ?? '',
+  address: p.address ?? '',
+  type: p.type ?? 'ROOM',
+
+  baseMonthlyRent: numToString(p.baseMonthlyRent),
+  monthlyUtilities: numToString(p.monthlyUtilities),
+  depositMonths: numToString(p.depositMonths),
+
+  isPublished: typeof p.isPublished === 'boolean' ? p.isPublished : true,
+
+  apartmentId: p.apartmentId ?? '',
+  buildingId: p.buildingId ?? '',
+});
 
 export default function PropertiesPage() {
   const [items, setItems] = useState<Property[]>([]);
@@ -59,31 +89,16 @@ export default function PropertiesPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // quale property ha documenti aperti
   const [openDocsPropertyId, setOpenDocsPropertyId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
-  const [form, setForm] = useState<CreatePropertyForm>({
-    code: '',
-    name: '',
-    address: '',
-    type: 'ROOM',
-
-    baseMonthlyRent: '',
-    monthlyUtilities: '',
-    depositMonths: '',
-
-    isPublished: true,
-
-    apartmentId: '',
-    buildingId: '',
-  });
+  const [form, setForm] = useState<CreatePropertyForm>(emptyForm());
 
   const onChange = (key: keyof CreatePropertyForm, value: any) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
   const apartments = useMemo(() => {
-    // tutte le properties di tipo APARTMENT
     return items.filter((p) => p.type === 'APARTMENT');
   }, [items]);
 
@@ -96,16 +111,6 @@ export default function PropertiesPage() {
     }
     return m;
   }, [apartments]);
-
-  const propertyLabel = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const p of items) {
-      const code = p.code ?? p.id;
-      const name = p.name ? ` – ${p.name}` : '';
-      m.set(p.id, `${code}${name}`);
-    }
-    return m;
-  }, [items]);
 
   const loadAll = async () => {
     setLoading(true);
@@ -125,44 +130,34 @@ export default function PropertiesPage() {
   }, []);
 
   const resetForm = () => {
-    setForm({
-      code: '',
-      name: '',
-      address: '',
-      type: 'ROOM',
-
-      baseMonthlyRent: '',
-      monthlyUtilities: '',
-      depositMonths: '',
-
-      isPublished: true,
-
-      apartmentId: '',
-      buildingId: '',
-    });
+    setForm(emptyForm());
+    setEditingId(null);
   };
 
-  const create = async () => {
-    setError(null);
-
-    if (!cleanStr(form.code)) return setError('Codice obbligatorio');
-    if (!cleanStr(form.name)) return setError('Nome obbligatorio');
-
-    // ✅ per ROOM/BED apartmentId obbligatorio
-    if ((form.type === 'ROOM' || form.type === 'BED') && !form.apartmentId) {
-      return setError('Seleziona apartmentId (appartamento) per ROOM/BED');
+  const buildPayload = () => {
+    const baseMonthlyRent = toNum(form.baseMonthlyRent);
+    if (baseMonthlyRent !== undefined && Number.isNaN(baseMonthlyRent)) {
+      throw new Error('baseMonthlyRent non valido');
     }
 
-    const baseMonthlyRent = toNum(form.baseMonthlyRent);
-    if (baseMonthlyRent !== undefined && Number.isNaN(baseMonthlyRent)) return setError('baseMonthlyRent non valido');
-
     const monthlyUtilities = toNum(form.monthlyUtilities);
-    if (monthlyUtilities !== undefined && Number.isNaN(monthlyUtilities)) return setError('monthlyUtilities non valido');
+    if (monthlyUtilities !== undefined && Number.isNaN(monthlyUtilities)) {
+      throw new Error('monthlyUtilities non valido');
+    }
 
     const depositMonths = toNum(form.depositMonths);
-    if (depositMonths !== undefined && Number.isNaN(depositMonths)) return setError('depositMonths non valido');
+    if (depositMonths !== undefined && Number.isNaN(depositMonths)) {
+      throw new Error('depositMonths non valido');
+    }
 
-    const body: any = {
+    if (!cleanStr(form.code)) throw new Error('Codice obbligatorio');
+    if (!cleanStr(form.name)) throw new Error('Nome obbligatorio');
+
+    if ((form.type === 'ROOM' || form.type === 'BED') && !form.apartmentId) {
+      throw new Error('Seleziona apartmentId (appartamento) per ROOM/BED');
+    }
+
+    return {
       code: cleanStr(form.code),
       name: cleanStr(form.name),
       address: cleanStr(form.address) || undefined,
@@ -176,26 +171,54 @@ export default function PropertiesPage() {
       isPublished: !!form.isPublished,
 
       buildingId: cleanStr(form.buildingId) || undefined,
-
-      // ✅ invia apartmentId solo se non APARTMENT
       apartmentId: form.type === 'APARTMENT' ? undefined : form.apartmentId || undefined,
     };
+  };
+
+  const save = async () => {
+    setError(null);
+
+    let body: any;
+    try {
+      body = buildPayload();
+    } catch (e: any) {
+      setError(e?.message ?? 'Dati non validi');
+      return;
+    }
 
     setBusy(true);
     try {
-      await fetchWithAuth('/properties', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+      if (editingId) {
+        await fetchWithAuth(`/properties/${editingId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      } else {
+        await fetchWithAuth('/properties', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      }
 
       resetForm();
       await loadAll();
     } catch (e: any) {
-      setError(e?.message ?? 'Errore creazione property');
+      setError(
+        e?.message ??
+          (editingId ? 'Errore aggiornamento property' : 'Errore creazione property'),
+      );
     } finally {
       setBusy(false);
     }
+  };
+
+  const startEdit = (p: Property) => {
+    setError(null);
+    setEditingId(p.id);
+    setForm(propertyToForm(p));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const remove = async (id: string) => {
@@ -204,6 +227,7 @@ export default function PropertiesPage() {
     try {
       await fetchWithAuth(`/properties/${id}`, { method: 'DELETE' });
       setOpenDocsPropertyId((prev) => (prev === id ? null : prev));
+      if (editingId === id) resetForm();
       await loadAll();
     } catch (e: any) {
       setError(e?.message ?? 'Errore eliminazione property');
@@ -219,7 +243,8 @@ export default function PropertiesPage() {
           <div>
             <h1 className="text-2xl font-semibold">Properties</h1>
             <p className="text-sm text-slate-600">
-              Gestisci immobili. Per ROOM/BED imposta anche l’<b>apartmentId</b> (appartamento contabile).
+              Gestisci immobili. Per ROOM/BED imposta anche l’<b>apartmentId</b>{' '}
+              (appartamento contabile).
             </p>
           </div>
 
@@ -238,9 +263,16 @@ export default function PropertiesPage() {
           </div>
         )}
 
-        {/* CREATE FORM */}
         <div className="bg-white rounded-xl shadow p-4 space-y-3">
-          <h2 className="font-medium">Nuova property</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-medium">
+              {editingId ? 'Modifica property' : 'Nuova property'}
+            </h2>
+
+            {editingId && (
+              <div className="text-xs text-slate-500">ID in modifica: {editingId}</div>
+            )}
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Field label="Codice" required>
@@ -287,7 +319,6 @@ export default function PropertiesPage() {
                   setForm((prev) => ({
                     ...prev,
                     type: v,
-                    // se diventa APARTMENT, non serve apartmentId
                     apartmentId: v === 'APARTMENT' ? '' : prev.apartmentId,
                   }));
                 }}
@@ -299,7 +330,7 @@ export default function PropertiesPage() {
               </Select>
             </Field>
 
-            {(form.type === 'ROOM' || form.type === 'BED') ? (
+            {form.type === 'ROOM' || form.type === 'BED' ? (
               <Field label="ApartmentId (contabile)" required>
                 <Select
                   value={form.apartmentId}
@@ -369,11 +400,11 @@ export default function PropertiesPage() {
 
           <div className="flex items-center gap-3">
             <button
-              onClick={create}
+              onClick={save}
               disabled={busy}
               className="bg-slate-800 text-white px-4 py-2 rounded hover:bg-slate-700 disabled:opacity-50"
             >
-              {busy ? 'Salvataggio...' : 'Create'}
+              {busy ? 'Salvataggio...' : editingId ? 'Aggiorna' : 'Create'}
             </button>
 
             <button
@@ -382,12 +413,11 @@ export default function PropertiesPage() {
               disabled={busy}
               className="border px-4 py-2 rounded hover:bg-slate-50 disabled:opacity-50"
             >
-              Reset
+              {editingId ? 'Annulla modifica' : 'Reset'}
             </button>
           </div>
         </div>
 
-        {/* LIST */}
         <div className="bg-white rounded-xl shadow p-4">
           <h2 className="font-medium mb-3">Elenco</h2>
 
@@ -399,6 +429,7 @@ export default function PropertiesPage() {
             <div className="space-y-2">
               {items.map((p) => {
                 const docsOpen = openDocsPropertyId === p.id;
+                const isEditingThis = editingId === p.id;
 
                 const title = `${p.code ?? p.id}${p.name ? ` – ${p.name}` : ''}`;
                 const aptText =
@@ -409,10 +440,18 @@ export default function PropertiesPage() {
                       : 'apartmentId: (mancante)';
 
                 return (
-                  <div key={p.id} className="border rounded-lg p-3">
+                  <div
+                    key={p.id}
+                    className={`border rounded-lg p-3 ${isEditingThis ? 'border-slate-800 bg-slate-50' : ''}`}
+                  >
                     <div className="flex justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="font-semibold truncate">{title}</div>
+                        <div className="font-semibold truncate">
+                          {title}
+                          {isEditingThis ? (
+                            <span className="text-xs text-blue-600 ml-2">[in modifica]</span>
+                          ) : null}
+                        </div>
 
                         <div className="text-sm text-slate-600">
                           {p.type ?? '-'} · {p.isPublished ? 'Pubblicato' : 'Non pubblicato'}
@@ -425,8 +464,8 @@ export default function PropertiesPage() {
                         </div>
 
                         <div className="text-xs text-slate-500 mt-1">
-                          base: {p.baseMonthlyRent ?? '-'} € · utenze: {p.monthlyUtilities ?? '-'} € · deposito:{' '}
-                          {p.depositMonths ?? '-'} mesi
+                          base: {p.baseMonthlyRent ?? '-'} € · utenze: {p.monthlyUtilities ?? '-'} € ·
+                          deposito: {p.depositMonths ?? '-'} mesi
                         </div>
 
                         <div className="text-[11px] text-slate-400 mt-1">id: {p.id}</div>
@@ -434,7 +473,17 @@ export default function PropertiesPage() {
 
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => setOpenDocsPropertyId((prev) => (prev === p.id ? null : p.id))}
+                          onClick={() => startEdit(p)}
+                          disabled={busy}
+                          className="border rounded-md px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+                        >
+                          Modifica
+                        </button>
+
+                        <button
+                          onClick={() =>
+                            setOpenDocsPropertyId((prev) => (prev === p.id ? null : p.id))
+                          }
                           className="border rounded-md px-3 py-2 text-sm"
                           disabled={busy}
                         >

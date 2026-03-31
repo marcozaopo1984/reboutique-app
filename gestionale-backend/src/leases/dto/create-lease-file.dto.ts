@@ -4,8 +4,13 @@ export class CreateLeaseFileDto {
   @IsString()
   fileName: string;
 
+  @IsOptional()
   @IsString()
-  storagePath: string;
+  storagePath?: string;
+
+  @IsOptional()
+  @IsString()
+  path?: string;
 
   @IsOptional()
   @IsUrl({ require_tld: false })

@@ -56,8 +56,16 @@ export class UpdateLeaseDto {
   depositAmount?: number;
 
   @IsOptional()
+  @IsISO8601()
+  depositDate?: string;
+
+  @IsOptional()
   @IsNumber()
   adminFeeAmount?: number;
+
+  @IsOptional()
+  @IsISO8601()
+  adminFeeDate?: string;
 
   @IsOptional()
   @IsNumber()

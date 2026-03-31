@@ -6,7 +6,6 @@ import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { CreateTenantFileDto } from './dto/create-tenant-file.dto';
 import * as admin from 'firebase-admin';
 
-
 @Injectable()
 export class TenantsService {
   constructor(private readonly firebaseService: FirebaseService) {}
@@ -23,17 +22,27 @@ export class TenantsService {
   }
 
   /**
-   * Utility: rimuove i campi undefined dall'oggetto,
+   * Utility: rimuove ricorsivamente i campi undefined dall'oggetto,
    * perché Firestore admin non li accetta.
    */
-  private cleanData<T extends Record<string, any>>(data: T): T {
-    const cleaned: any = {};
-    for (const [key, value] of Object.entries(data)) {
-      if (value !== undefined) {
-        cleaned[key] = value;
-      }
+  private cleanData<T>(value: T): T {
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => this.cleanData(item))
+        .filter((item) => item !== undefined) as T;
     }
-    return cleaned;
+
+    if (value && typeof value === 'object' && !(value instanceof Date)) {
+      const cleaned: Record<string, any> = {};
+      for (const [key, val] of Object.entries(value as Record<string, any>)) {
+        if (val !== undefined) {
+          cleaned[key] = this.cleanData(val);
+        }
+      }
+      return cleaned as T;
+    }
+
+    return value;
   }
 
   async create(holderId: string, dto: CreateTenantDto) {
@@ -63,9 +72,11 @@ export class TenantsService {
   async findOne(holderId: string, tenantId: string) {
     const col = this.tenantsCollection(holderId);
     const doc = await col.doc(tenantId).get();
+
     if (!doc.exists) {
       throw new NotFoundException(`Tenant ${tenantId} not found`);
     }
+
     return { id: doc.id, ...(doc.data() as any) };
   }
 
@@ -103,17 +114,24 @@ export class TenantsService {
     return { success: true };
   }
 
-   private tenantFilesCollection(holderId: string, tenantId: string) {
-    return this.tenantsCollection(holderId)
-      .doc(tenantId)
-      .collection('files');
+  private tenantFilesCollection(holderId: string, tenantId: string) {
+    return this.tenantsCollection(holderId).doc(tenantId).collection('files');
   }
-  
+
   async addFile(holderId: string, tenantId: string, dto: CreateTenantFileDto) {
+    const tenantRef = this.tenantsCollection(holderId).doc(tenantId);
+    const tenantSnap = await tenantRef.get();
+
+    if (!tenantSnap.exists) {
+      throw new NotFoundException(`Tenant ${tenantId} not found`);
+    }
+
     const filesCol = this.tenantFilesCollection(holderId, tenantId);
+    const storagePath = dto.storagePath ?? dto.path;
 
     const rawData = {
       ...dto,
+      storagePath,
       createdAt: new Date(),
     };
 
@@ -125,72 +143,74 @@ export class TenantsService {
   }
 
   async listFiles(holderId: string, tenantId: string) {
+    const tenantRef = this.tenantsCollection(holderId).doc(tenantId);
+    const tenantSnap = await tenantRef.get();
+
+    if (!tenantSnap.exists) {
+      throw new NotFoundException(`Tenant ${tenantId} not found`);
+    }
+
     const filesCol = this.tenantFilesCollection(holderId, tenantId);
     const snap = await filesCol.get();
     return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
   }
 
-async removeFile(holderId: string, tenantId: string, fileId: string) {
-  const filesCol = this.tenantFilesCollection(holderId, tenantId);
-  const ref = filesCol.doc(fileId);
-  const doc = await ref.get();
+  async removeFile(holderId: string, tenantId: string, fileId: string) {
+    const filesCol = this.tenantFilesCollection(holderId, tenantId);
+    const ref = filesCol.doc(fileId);
+    const doc = await ref.get();
 
-  if (!doc.exists) {
-    throw new NotFoundException(`File ${fileId} not found`);
-  }
-
-  const data = doc.data() as any;
-
- 
-  let storagePath: string | undefined =
-    data?.storagePath ?? data?.path; // fallback su "path" se in futuro cambia nome
-  const fileName: string | undefined = data?.fileName;
-
-  console.log('removeFile - raw data from Firestore:', data);
-
-  // Se per caso storagePath non contiene il nome del file, lo aggiungo
-  if (storagePath && fileName && !storagePath.endsWith(fileName)) {
-    if (!storagePath.endsWith('/')) {
-      storagePath += '/';
+    if (!doc.exists) {
+      throw new NotFoundException(`File ${fileId} not found`);
     }
-    storagePath += fileName;
-  }
 
-  console.log('removeFile - computed storagePath:', storagePath);
+    const data = doc.data() as any;
 
-  if (storagePath) {
-    try {
-      const bucketName =
-        process.env.FIREBASE_STORAGE_BUCKET ||
-        'reboutique-gestionale.firebasestorage.app';
+    let storagePath: string | undefined = data?.storagePath ?? data?.path;
+    const fileName: string | undefined = data?.fileName;
 
-      const bucket = admin.storage().bucket(bucketName);
-      const file = bucket.file(storagePath);
+    console.log('removeFile - raw data from Firestore:', data);
 
-      console.log(
-        `removeFile - deleting from bucket "${bucketName}" path "${storagePath}"`,
-      );
+    if (storagePath && fileName && !storagePath.endsWith(fileName)) {
+      if (!storagePath.endsWith('/')) {
+        storagePath += '/';
+      }
+      storagePath += fileName;
+    }
 
-      await file.delete({ ignoreNotFound: true });
+    console.log('removeFile - computed storagePath:', storagePath);
 
-      console.log(`removeFile - Deleted storage file: ${storagePath}`);
-    } catch (err) {
-      console.error(
-        `Errore nella cancellazione del file Storage ${storagePath}:`,
-        (err as any)?.message ?? err,
+    if (storagePath) {
+      try {
+        const bucketName =
+          process.env.FIREBASE_STORAGE_BUCKET ||
+          'reboutique-gestionale.firebasestorage.app';
+
+        const bucket = admin.storage().bucket(bucketName);
+        const file = bucket.file(storagePath);
+
+        console.log(
+          `removeFile - deleting from bucket "${bucketName}" path "${storagePath}"`,
+        );
+
+        await file.delete({ ignoreNotFound: true });
+
+        console.log(`removeFile - Deleted storage file: ${storagePath}`);
+      } catch (err) {
+        console.error(
+          `Errore nella cancellazione del file Storage ${storagePath}:`,
+          (err as any)?.message ?? err,
+        );
+      }
+    } else {
+      console.warn(
+        `removeFile - Nessun storagePath nel documento file ${fileId}, salto delete Storage`,
       );
     }
-  } else {
-    console.warn(
-      `removeFile - Nessun storagePath nel documento file ${fileId}, salto delete Storage`,
-    );
+
+    await ref.delete();
+    console.log(`removeFile - Deleted Firestore doc for fileId: ${fileId}`);
+
+    return { success: true };
   }
-
-  await ref.delete();
-  console.log(`removeFile - Deleted Firestore doc for fileId: ${fileId}`);
-
-  return { success: true };
-}
-
-
 }
