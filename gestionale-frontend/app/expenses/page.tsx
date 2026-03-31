@@ -6,6 +6,15 @@ import { fetchWithAuth } from '@/lib/apiClient';
 import EntityDocuments from '@/components/EntityDocuments';
 import { Field, Input, Select } from '@/components/form/Field';
 
+type Tenant = { id: string; firstName?: string; lastName?: string };
+type Landlord = { id: string; firstName?: string; lastName?: string; name?: string };
+type Lease = {
+  id: string;
+  type?: 'TENANT' | 'LANDLORD';
+  tenantId?: string;
+  landlordId?: string;
+  propertyId?: string;
+};
 type Property = { id: string; code?: string; name?: string; type?: string };
 
 type ExpenseFrequency = 'ONCE' | 'MONTHLY' | 'YEARLY' | string;
@@ -23,7 +32,7 @@ type Expense = {
   amount: number;
   currency?: string;
 
-  costDate: any; // "YYYY-MM-DD" | Timestamp | Date
+  costDate: any;
   costMonth?: string;
 
   frequency?: ExpenseFrequency;
@@ -32,11 +41,13 @@ type Expense = {
   allocationMode?: ExpenseAllocationMode;
 
   status?: ExpenseStatus;
-  paidDate?: any; // string | Timestamp | Date
+  paidDate?: any;
 
   notes?: string;
 
   leaseId?: string;
+  tenantId?: string;
+  landlordId?: string;
 };
 
 type CreateExpenseForm = {
@@ -47,8 +58,8 @@ type CreateExpenseForm = {
   amount: string;
   currency: string;
 
-  costDate: string; // YYYY-MM-DD
-  costMonth: string; // '' oppure YYYY-MM
+  costDate: string;
+  costMonth: string;
 
   frequency: '' | ExpenseFrequency;
 
@@ -56,7 +67,7 @@ type CreateExpenseForm = {
   allocationMode: '' | ExpenseAllocationMode;
 
   status: ExpenseStatus;
-  paidDate: string; // '' oppure YYYY-MM-DD
+  paidDate: string;
 
   notes: string;
 };
@@ -67,11 +78,11 @@ type SortDir = 'asc' | 'desc';
 type Filters = {
   q: string;
   propertyId: string;
-  type: string; // expense.type
+  type: string;
   scope: string;
   frequency: string;
-  status: string; // effective
-  month: string; // YYYY-MM
+  status: string;
+  month: string;
   onlyOverdueComputed: boolean;
 };
 
@@ -81,7 +92,6 @@ const toNum = (v: string) => {
   return s === '' ? undefined : Number(s);
 };
 
-// ---- date helpers robusti (string | Date | Firestore Timestamp) ----
 const toYmd = (v: any): string => {
   if (!v) return '';
   if (typeof v === 'string') return v.length >= 10 ? v.slice(0, 10) : v;
@@ -100,8 +110,6 @@ const toYmd = (v: any): string => {
 const monthFromYmd = (ymd: string) => (ymd && ymd.length >= 7 ? ymd.slice(0, 7) : '');
 const todayYmdUtc = () => new Date().toISOString().slice(0, 10);
 const compareStr = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
-
-// ---- querystring helpers ----
 const parseBool = (v: string | null) => v === '1' || v === 'true';
 
 const pickSortKey = (v: string | null): SortKey => {
@@ -114,12 +122,6 @@ const pickSortDir = (v: string | null): SortDir => {
   return 'desc';
 };
 
-/**
- * ✅ Robust: l'Input custom a volte chiama onChange con:
- * - event (React.ChangeEvent<HTMLInputElement>)
- * - direttamente la stringa (value)
- * Qui normalizziamo SEMPRE a string.
- */
 const valueFromInputChange = (arg: unknown): string => {
   if (typeof arg === 'string') return arg;
   if (typeof arg === 'number') return String(arg);
@@ -130,7 +132,6 @@ const valueFromInputChange = (arg: unknown): string => {
   return '';
 };
 
-// YYYY-MM from YYYY-MM-DD
 const monthFromDate = (d: string) => (d && d.length >= 7 ? d.slice(0, 7) : '');
 
 const fmtStatus = (s: string) => {
@@ -147,13 +148,15 @@ export default function ExpensesPage() {
   const didInitFromUrl = useRef(false);
 
   const [items, setItems] = useState<Expense[]>([]);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [landlords, setLandlords] = useState<Landlord[]>([]);
+  const [leases, setLeases] = useState<Lease[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // quale expense ha documenti aperti
   const [openDocsExpenseId, setOpenDocsExpenseId] = useState<string | null>(null);
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
 
@@ -173,7 +176,6 @@ export default function ExpensesPage() {
     notes: '',
   });
 
-  // ✅ filtri + sort (stile payments)
   const [filters, setFilters] = useState<Filters>({
     q: '',
     propertyId: '',
@@ -198,6 +200,24 @@ export default function ExpensesPage() {
       onChange(key, valueFromInputChange(arg));
     };
 
+  const tenantLabel = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const t of tenants) {
+      const n = `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim();
+      m.set(t.id, n || t.id);
+    }
+    return m;
+  }, [tenants]);
+
+  const landlordLabel = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const l of landlords) {
+      const n = (l.name ?? `${l.firstName ?? ''} ${l.lastName ?? ''}`.trim()).trim();
+      m.set(l.id, n || l.id);
+    }
+    return m;
+  }, [landlords]);
+
   const propertyLabel = useMemo(() => {
     const m = new Map<string, string>();
     for (const p of properties) {
@@ -208,7 +228,12 @@ export default function ExpensesPage() {
     return m;
   }, [properties]);
 
-  // ---- init from URL (once) ----
+  const leaseById = useMemo(() => {
+    const m = new Map<string, Lease>();
+    for (const l of leases) m.set(l.id, l);
+    return m;
+  }, [leases]);
+
   useEffect(() => {
     if (didInitFromUrl.current) return;
 
@@ -238,10 +263,8 @@ export default function ExpensesPage() {
     setSortDir(sd);
 
     didInitFromUrl.current = true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [searchParams]);
 
-  // ---- build current shareable URL ----
   const shareUrl = useMemo(() => {
     const sp = new URLSearchParams();
 
@@ -279,7 +302,6 @@ export default function ExpensesPage() {
     }
   };
 
-  // ---- push state to URL ----
   useEffect(() => {
     if (!didInitFromUrl.current) return;
 
@@ -306,9 +328,18 @@ export default function ExpensesPage() {
     setLoading(true);
     setError(null);
     try {
-      const [expensesRes, propsRes] = await Promise.all([fetchWithAuth('/expenses'), fetchWithAuth('/properties')]);
+      const [expensesRes, tenantsRes, landlordsRes, leasesRes, propsRes] = await Promise.all([
+        fetchWithAuth('/expenses'),
+        fetchWithAuth('/tenants'),
+        fetchWithAuth('/landlords'),
+        fetchWithAuth('/leases'),
+        fetchWithAuth('/properties'),
+      ]);
 
       setItems(Array.isArray(expensesRes) ? expensesRes : []);
+      setTenants(Array.isArray(tenantsRes) ? tenantsRes : []);
+      setLandlords(Array.isArray(landlordsRes) ? landlordsRes : []);
+      setLeases(Array.isArray(leasesRes) ? leasesRes : []);
       setProperties(Array.isArray(propsRes) ? propsRes : []);
     } catch (e: any) {
       setError(e?.message ?? 'Errore caricamento dati');
@@ -446,6 +477,9 @@ export default function ExpensesPage() {
     try {
       await fetchWithAuth(`/expenses/${id}`, { method: 'DELETE' });
       setOpenDocsExpenseId((prev) => (prev === id ? null : prev));
+      if (editingExpenseId === id) {
+        resetForm();
+      }
       await loadAll();
     } catch (e: any) {
       setError(e?.message ?? 'Errore eliminazione spesa');
@@ -454,9 +488,6 @@ export default function ExpensesPage() {
     }
   };
 
-  // -------------------------
-  // Derived / computed UI fields (effectiveStatus + month)
-  // -------------------------
   const enriched = useMemo(() => {
     const today = todayYmdUtc();
     return items.map((x) => {
@@ -464,10 +495,18 @@ export default function ExpensesPage() {
       const paid = toYmd(x.paidDate);
       const month = x.costMonth || monthFromYmd(cost);
 
-      // overdue computed: se PLANNED (o vuoto) e costDate < today e non paid
       const overdueComputed = ((x.status ?? 'PLANNED') === 'PLANNED') && !!cost && cost < today && !paid;
-
       const effectiveStatus: ExpenseStatus = overdueComputed ? 'OVERDUE' : (x.status ?? 'PLANNED');
+
+      const lease = x.leaseId ? leaseById.get(x.leaseId) : undefined;
+      const resolvedTenantId = x.tenantId ?? (lease?.type === 'TENANT' ? lease.tenantId : undefined);
+      const resolvedLandlordId = x.landlordId ?? (lease?.type === 'LANDLORD' ? lease.landlordId : undefined);
+      const actorName = resolvedTenantId
+        ? tenantLabel.get(resolvedTenantId) ?? resolvedTenantId
+        : resolvedLandlordId
+          ? landlordLabel.get(resolvedLandlordId) ?? resolvedLandlordId
+          : '';
+      const actorType = resolvedLandlordId ? 'LANDLORD' : resolvedTenantId ? 'TENANT' : '';
 
       return {
         ...x,
@@ -476,9 +515,13 @@ export default function ExpensesPage() {
         _month: month,
         _overdueComputed: overdueComputed,
         _effectiveStatus: effectiveStatus,
+        _resolvedTenantId: resolvedTenantId,
+        _resolvedLandlordId: resolvedLandlordId,
+        _actorName: actorName,
+        _actorType: actorType,
       };
     });
-  }, [items]);
+  }, [items, leaseById, tenantLabel, landlordLabel]);
 
   const availableTypes = useMemo(() => {
     const s = new Set<string>();
@@ -525,10 +568,13 @@ export default function ExpensesPage() {
 
       if (q) {
         const propText = (propertyLabel.get(x.propertyId) ?? x.propertyId).toLowerCase();
+        const actorText = String(x._actorName ?? '').toLowerCase();
         const hay = [
           x.id,
           x.propertyId,
           propText,
+          actorText,
+          x._actorType ?? '',
           x.type ?? '',
           x.description ?? '',
           x.notes ?? '',
@@ -609,7 +655,6 @@ export default function ExpensesPage() {
 
         {error && <div className="mb-2 bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded">{error}</div>}
 
-        {/* FILTERS + KPI (stile payments) */}
         <div className="bg-white rounded-xl shadow p-4 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -648,7 +693,7 @@ export default function ExpensesPage() {
               <Input
                 value={filters.q}
                 onChange={(arg: unknown) => setFilters((p) => ({ ...p, q: valueFromInputChange(arg) }))}
-                placeholder="property, type, status, scope, id, notes..."
+                placeholder="property, tenant, landlord, type, status, id, notes..."
                 disabled={busy}
               />
             </Field>
@@ -779,7 +824,6 @@ export default function ExpensesPage() {
           </div>
         </div>
 
-        {/* CREATE / EDIT FORM */}
         <div className="bg-white rounded-xl shadow p-4 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <h2 className="font-medium">{editingExpenseId ? 'Modifica spesa' : 'Nuova spesa'}</h2>
@@ -923,7 +967,6 @@ export default function ExpensesPage() {
           </div>
         </div>
 
-        {/* LIST */}
         <div className="bg-white rounded-xl shadow p-4">
           <div className="flex items-center justify-between gap-3 mb-3">
             <h2 className="font-medium">Elenco</h2>
@@ -940,7 +983,11 @@ export default function ExpensesPage() {
             <div className="space-y-2">
               {sorted.map((x: any) => {
                 const docsOpen = openDocsExpenseId === x.id;
+                const isEditingThis = editingExpenseId === x.id;
+
                 const propText = propertyLabel.get(x.propertyId) ?? x.propertyId;
+                const actorText = x._actorName ?? '';
+                const actorType = x._actorType ?? '';
 
                 const cost = x._costYmd || '-';
                 const paid = x._paidYmd || '';
@@ -954,11 +1001,15 @@ export default function ExpensesPage() {
                       : 'bg-slate-50 text-slate-700 border-slate-200';
 
                 return (
-                  <div key={x.id} className="border rounded-lg p-3">
+                  <div key={x.id} className={`border rounded-lg p-3 ${isEditingThis ? 'border-slate-800 bg-slate-50' : ''}`}>
                     <div className="flex justify-between gap-3">
                       <div className="min-w-0">
                         <div className="font-semibold truncate">
-                          {propText} · {x.type}
+                          {actorText ? `${actorText} → ${propText}` : propText} · {x.type}
+                          {actorType ? <span className="text-xs text-slate-500 ml-2">[{actorType}]</span> : null}
+                          {isEditingThis ? (
+                            <span className="text-xs text-blue-600 ml-2">[in modifica]</span>
+                          ) : null}
                         </div>
 
                         <div className="text-sm text-slate-600 flex flex-wrap items-center gap-2">
@@ -999,19 +1050,19 @@ export default function ExpensesPage() {
                         )}
 
                         <button
+                          onClick={() => startEdit(x)}
+                          disabled={busy}
+                          className="border rounded-md px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+                        >
+                          Modifica
+                        </button>
+
+                        <button
                           onClick={() => setOpenDocsExpenseId((prev) => (prev === x.id ? null : x.id))}
                           className="border rounded-md px-3 py-2 text-sm"
                           disabled={busy}
                         >
                           {docsOpen ? 'Chiudi documenti' : 'Documenti'}
-                        </button>
-
-                        <button
-                          onClick={() => startEdit(x)}
-                          disabled={busy}
-                          className="text-sm text-slate-700 hover:underline disabled:opacity-50"
-                        >
-                          Modifica
                         </button>
 
                         <button
@@ -1026,7 +1077,7 @@ export default function ExpensesPage() {
 
                     {docsOpen && (
                       <div className="mt-3">
-                        <EntityDocuments entityKind="expenses" entityId={x.id} label={`Documenti spesa (${propText} · ${x.type})`} />
+                        <EntityDocuments entityKind="expenses" entityId={x.id} label={`Documenti spesa (${actorText ? `${actorText} → ${propText}` : propText} · ${x.type})`} />
                       </div>
                     )}
                   </div>

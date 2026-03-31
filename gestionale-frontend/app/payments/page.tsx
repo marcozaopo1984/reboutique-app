@@ -7,15 +7,23 @@ import EntityDocuments from '@/components/EntityDocuments';
 import { Field, Input, Select } from '@/components/form/Field';
 
 type Tenant = { id: string; firstName?: string; lastName?: string };
+type Landlord = { id: string; firstName?: string; lastName?: string; name?: string };
 type Property = { id: string; code?: string; name?: string; type?: string; buildingId?: string };
-type Lease = { id: string; tenantId?: string; propertyId?: string };
+type Lease = {
+  id: string;
+  type?: 'TENANT' | 'LANDLORD';
+  tenantId?: string;
+  landlordId?: string;
+  propertyId?: string;
+};
 
 type PaymentKind = 'RENT' | 'BUILDING_FEE' | 'OTHER' | string;
 type PaymentStatus = 'PLANNED' | 'PAID' | 'OVERDUE' | string;
 
 type Payment = {
   id: string;
-  tenantId: string;
+  tenantId?: string;
+  landlordId?: string;
   propertyId: string;
   leaseId?: string;
   buildingId?: string;
@@ -88,6 +96,9 @@ const compareStr = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 const fmtKind = (k: string) => {
   if (k === 'RENT') return 'Affitto';
   if (k === 'BUILDING_FEE') return 'Quota condominiale';
+  if (k === 'DEPOSIT') return 'Deposito';
+  if (k === 'ADMIN_FEE') return 'Fee amministrativa';
+  if (k === 'DEPOSIT_RETURN_FROM_LANDLORD') return 'Rientro deposito landlord';
   if (k === 'OTHER') return 'Altro';
   return k;
 };
@@ -130,6 +141,7 @@ export default function PaymentsPage() {
 
   const [items, setItems] = useState<Payment[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [landlords, setLandlords] = useState<Landlord[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
   const [leases, setLeases] = useState<Lease[]>([]);
 
@@ -280,6 +292,15 @@ export default function PaymentsPage() {
     return m;
   }, [tenants]);
 
+  const landlordLabel = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const l of landlords) {
+      const n = (l.name ?? `${l.firstName ?? ''} ${l.lastName ?? ''}`.trim()).trim();
+      m.set(l.id, n || l.id);
+    }
+    return m;
+  }, [landlords]);
+
   const propertyLabel = useMemo(() => {
     const m = new Map<string, string>();
     for (const p of properties) {
@@ -290,29 +311,40 @@ export default function PaymentsPage() {
     return m;
   }, [properties]);
 
+  const leaseById = useMemo(() => {
+    const m = new Map<string, Lease>();
+    for (const l of leases) m.set(l.id, l);
+    return m;
+  }, [leases]);
+
   const leaseLabel = useMemo(() => {
     const m = new Map<string, string>();
     for (const l of leases) {
-      const t = l.tenantId ? tenantLabel.get(l.tenantId) ?? l.tenantId : '(tenant?)';
+      const actor = l.type === 'LANDLORD'
+        ? (l.landlordId ? landlordLabel.get(l.landlordId) ?? l.landlordId : '(landlord?)')
+        : (l.tenantId ? tenantLabel.get(l.tenantId) ?? l.tenantId : '(tenant?)');
       const p = l.propertyId ? propertyLabel.get(l.propertyId) ?? l.propertyId : '(property?)';
-      m.set(l.id, `${t} → ${p}`);
+      const prefix = l.type === 'LANDLORD' ? 'LANDLORD' : 'TENANT';
+      m.set(l.id, `${prefix} · ${actor} → ${p}`);
     }
     return m;
-  }, [leases, tenantLabel, propertyLabel]);
+  }, [leases, tenantLabel, landlordLabel, propertyLabel]);
 
   const loadAll = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [paymentsRes, tenantsRes, propertiesRes, leasesRes] = await Promise.all([
+      const [paymentsRes, tenantsRes, landlordsRes, propertiesRes, leasesRes] = await Promise.all([
         fetchWithAuth('/payments'),
         fetchWithAuth('/tenants'),
+        fetchWithAuth('/landlords'),
         fetchWithAuth('/properties'),
         fetchWithAuth('/leases'),
       ]);
 
       setItems(Array.isArray(paymentsRes) ? paymentsRes : []);
       setTenants(Array.isArray(tenantsRes) ? tenantsRes : []);
+      setLandlords(Array.isArray(landlordsRes) ? landlordsRes : []);
       setProperties(Array.isArray(propertiesRes) ? propertiesRes : []);
       setLeases(Array.isArray(leasesRes) ? leasesRes : []);
     } catch (e: any) {
@@ -370,17 +402,31 @@ export default function PaymentsPage() {
 
     if (!form.dueDate) return setError('Seleziona dueDate');
 
-    let derivedTenantId = form.tenantId;
+    let derivedTenantId = form.tenantId || undefined;
+    let derivedLandlordId: string | undefined = undefined;
     let derivedPropertyId = form.propertyId;
 
     if (!form.manualMode) {
       if (!form.leaseId) return setError('Seleziona un contratto');
       const lease = leases.find((l) => l.id === form.leaseId);
-      if (!lease?.tenantId || !lease?.propertyId) {
-        return setError('Contratto non valido (tenant/property mancanti)');
+      if (!lease?.propertyId) {
+        return setError('Contratto non valido (property mancante)');
       }
-      derivedTenantId = lease.tenantId;
+
       derivedPropertyId = lease.propertyId;
+
+      if (lease.type === 'LANDLORD') {
+        if (!lease.landlordId) {
+          return setError('Contratto LANDLORD non valido (landlord mancante)');
+        }
+        derivedTenantId = undefined;
+        derivedLandlordId = lease.landlordId;
+      } else {
+        if (!lease.tenantId) {
+          return setError('Contratto TENANT non valido (tenant mancante)');
+        }
+        derivedTenantId = lease.tenantId;
+      }
     } else {
       if (!derivedTenantId) return setError('Seleziona un tenant');
       if (!derivedPropertyId) return setError('Seleziona una property');
@@ -393,6 +439,7 @@ export default function PaymentsPage() {
     const body: any = {
       leaseId: form.manualMode ? undefined : form.leaseId || undefined,
       tenantId: derivedTenantId,
+      landlordId: derivedLandlordId,
       propertyId: derivedPropertyId,
       buildingId: prop?.buildingId ?? undefined,
 
@@ -477,6 +524,15 @@ export default function PaymentsPage() {
       const overdueComputed = (p.status === 'PLANNED' || !p.status) && !!due && due < today && !paid;
 
       const effectiveStatus: PaymentStatus = overdueComputed ? 'OVERDUE' : (p.status ?? 'PLANNED');
+      const lease = p.leaseId ? leaseById.get(p.leaseId) : undefined;
+      const resolvedTenantId = p.tenantId ?? (lease?.type === 'TENANT' ? lease.tenantId : undefined);
+      const resolvedLandlordId = p.landlordId ?? (lease?.type === 'LANDLORD' ? lease.landlordId : undefined);
+      const actorName = resolvedTenantId
+        ? tenantLabel.get(resolvedTenantId) ?? resolvedTenantId
+        : resolvedLandlordId
+          ? landlordLabel.get(resolvedLandlordId) ?? resolvedLandlordId
+          : '(soggetto?)';
+      const actorType = resolvedLandlordId ? 'LANDLORD' : 'TENANT';
 
       return {
         ...p,
@@ -486,9 +542,13 @@ export default function PaymentsPage() {
         _isManual: isManual,
         _overdueComputed: overdueComputed,
         _effectiveStatus: effectiveStatus,
+        _resolvedTenantId: resolvedTenantId,
+        _resolvedLandlordId: resolvedLandlordId,
+        _actorName: actorName,
+        _actorType: actorType,
       };
     });
-  }, [items]);
+  }, [items, leaseById, tenantLabel, landlordLabel]);
 
   const availableKinds = useMemo(() => {
     const s = new Set<string>();
@@ -508,7 +568,7 @@ export default function PaymentsPage() {
   const filtered = useMemo(() => {
     const q = cleanStr(filters.q).toLowerCase();
     return enriched.filter((p: any) => {
-      if (filters.tenantId && p.tenantId !== filters.tenantId) return false;
+      if (filters.tenantId && p._resolvedTenantId !== filters.tenantId) return false;
       if (filters.propertyId && p.propertyId !== filters.propertyId) return false;
       if (filters.leaseId && (p.leaseId ?? '') !== filters.leaseId) return false;
       if (filters.kind && (p.kind ?? '') !== filters.kind) return false;
@@ -518,17 +578,19 @@ export default function PaymentsPage() {
       if (filters.onlyOverdueComputed && !p._overdueComputed) return false;
 
       if (q) {
-        const tName = (tenantLabel.get(p.tenantId) ?? p.tenantId).toLowerCase();
+        const actorText = String(p._actorName ?? '').toLowerCase();
         const propText = (propertyLabel.get(p.propertyId) ?? p.propertyId).toLowerCase();
         const hay = [
           p.id,
-          p.tenantId,
+          p.tenantId ?? '',
+          p.landlordId ?? '',
           p.propertyId,
           p.leaseId ?? '',
-          tName,
+          actorText,
           propText,
           p.kind ?? '',
           p.status ?? '',
+          p._actorType ?? '',
           p._dueYmd ?? '',
           p._paidYmd ?? '',
         ]
@@ -538,7 +600,7 @@ export default function PaymentsPage() {
       }
       return true;
     });
-  }, [enriched, filters, tenantLabel, propertyLabel]);
+  }, [enriched, filters, propertyLabel]);
 
   const sorted = useMemo(() => {
     const dir = sortDir === 'asc' ? 1 : -1;
@@ -642,7 +704,7 @@ export default function PaymentsPage() {
               <Input
                 value={filters.q}
                 onChange={(arg: unknown) => setFilters((p) => ({ ...p, q: valueFromInputChange(arg) }))}
-                placeholder="tenant, immobile, leaseId, kind, status, id..."
+                placeholder="tenant, landlord, immobile, leaseId, kind, status, id..."
                 disabled={busy}
               />
             </Field>
@@ -868,6 +930,9 @@ export default function PaymentsPage() {
               <Select value={form.kind} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => onChange('kind', e.target.value)} disabled={busy}>
                 <option value="RENT">Affitto</option>
                 <option value="BUILDING_FEE">Quota condominiale</option>
+                <option value="DEPOSIT">Deposito</option>
+                <option value="ADMIN_FEE">Fee amministrativa</option>
+                <option value="DEPOSIT_RETURN_FROM_LANDLORD">Rientro deposito landlord</option>
                 <option value="OTHER">Altro</option>
               </Select>
             </Field>
@@ -921,7 +986,8 @@ export default function PaymentsPage() {
                 const docsOpen = openDocsPaymentId === p.id;
                 const isEditingThis = editingPaymentId === p.id;
 
-                const tName = tenantLabel.get(p.tenantId) ?? p.tenantId;
+                const actorText = p._actorName ?? '(soggetto?)';
+                const actorType = p._actorType ?? 'TENANT';
                 const propText = propertyLabel.get(p.propertyId) ?? p.propertyId;
 
                 const manualLabel = p.leaseId ? '' : ' · MANUALE';
@@ -945,7 +1011,8 @@ export default function PaymentsPage() {
                     <div className="flex justify-between gap-3">
                       <div className="min-w-0">
                         <div className="font-semibold truncate">
-                          {tName} → {propText}
+                          {actorText} → {propText}
+                          <span className="text-xs text-slate-500 ml-2">[{actorType}]</span>
                           {isEditingThis ? (
                             <span className="text-xs text-blue-600 ml-2">[in modifica]</span>
                           ) : null}
@@ -1014,7 +1081,7 @@ export default function PaymentsPage() {
                         <EntityDocuments
                           entityKind="payments"
                           entityId={p.id}
-                          label={`Documenti pagamento (${tName} → ${propText})`}
+                          label={`Documenti pagamento (${actorText} → ${propText})`}
                         />
                       </div>
                     )}

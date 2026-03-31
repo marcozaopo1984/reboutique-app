@@ -474,6 +474,7 @@ export class LeasesService {
       refs.push(this.paymentsCollection(holderId).doc(`${leaseId}_admin_fee_start`));
     } else {
       refs.push(this.expensesCollection(holderId).doc(`${leaseId}_deposit_to_landlord`));
+      refs.push(this.paymentsCollection(holderId).doc(`${leaseId}_deposit_return_from_landlord`));
       refs.push(this.expensesCollection(holderId).doc(`${leaseId}_admin_fee_to_landlord`));
     }
 
@@ -597,6 +598,29 @@ export class LeasesService {
             updatedAt: now,
           }),
         );
+
+        if (endDate) {
+          payments.set(
+            `${leaseId}_deposit_return_from_landlord`,
+            this.cleanData({
+              leaseId,
+              landlordId,
+              propertyId,
+              apartmentId,
+              buildingId: buildingId ?? undefined,
+              dueDate: this.isoDate(endDate),
+              paidDate: undefined,
+              amount: depositAmount,
+              currency: 'EUR',
+              kind: 'DEPOSIT_RETURN_FROM_LANDLORD',
+              status: 'PLANNED',
+              period: this.monthKey(endDate),
+              generatedFromLeaseSchedule: true,
+              createdAt: now,
+              updatedAt: now,
+            }),
+          );
+        }
       }
 
       if (adminFeeAmount && adminFeeAmount > 0) {
