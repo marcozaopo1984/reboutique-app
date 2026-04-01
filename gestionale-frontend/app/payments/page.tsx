@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { fetchWithAuth } from '@/lib/apiClient';
+import { formatDateIT } from '@/lib/dateFormat';
 import EntityDocuments from '@/components/EntityDocuments';
 import { Field, Input, Select } from '@/components/form/Field';
 
@@ -646,30 +647,30 @@ export default function PaymentsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      <div className="max-w-6xl mx-auto py-8 px-4 space-y-6">
+    <div className="app-shell">
+      <div className="app-container space-y-6">
         <header className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold">Payments</h1>
-            <p className="text-sm text-slate-600">Gestisci pagamenti (manuali o collegati ai contratti).</p>
+            <h1 className="page-title">Payments</h1>
+            <p className="page-subtitle">Gestisci pagamenti (manuali o collegati ai contratti).</p>
           </div>
 
           <button
             onClick={loadAll}
             disabled={busy}
-            className="text-sm border rounded px-3 py-1 hover:bg-slate-50 disabled:opacity-50"
+            className="btn-secondary text-sm"
           >
             Refresh
           </button>
         </header>
 
         {error && (
-          <div className="mb-2 bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded">
+          <div className="alert-error">
             {error}
           </div>
         )}
 
-        <div className="bg-white rounded-xl shadow p-4 space-y-3">
+        <div className="surface-card p-5 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="text-sm text-slate-600">Riepilogo (filtri applicati)</div>
@@ -838,7 +839,7 @@ export default function PaymentsPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow p-4 space-y-3">
+        <div className="surface-card p-5 space-y-4">
           <div className="flex items-center justify-between gap-3">
             <h2 className="font-medium">{editingPaymentId ? 'Modifica pagamento' : 'Nuovo pagamento'}</h2>
             {editingPaymentId && <div className="text-xs text-slate-500">Stai modificando: {editingPaymentId}</div>}
@@ -953,7 +954,7 @@ export default function PaymentsPage() {
             <button
               onClick={savePayment}
               disabled={busy}
-              className="bg-slate-800 text-white px-4 py-2 rounded hover:bg-slate-700 disabled:opacity-50"
+              className="btn-primary"
             >
               {busy ? 'Salvataggio...' : editingPaymentId ? 'Aggiorna' : 'Create'}
             </button>
@@ -962,14 +963,14 @@ export default function PaymentsPage() {
               type="button"
               onClick={resetForm}
               disabled={busy}
-              className="border px-4 py-2 rounded hover:bg-slate-50 disabled:opacity-50"
+              className="btn-secondary"
             >
               {editingPaymentId ? 'Annulla modifica' : 'Reset'}
             </button>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow p-4">
+        <div className="surface-card p-5">
           <div className="flex items-center justify-between gap-3 mb-3">
             <h2 className="font-medium">Elenco</h2>
             <div className="text-xs text-slate-500">
@@ -1034,8 +1035,8 @@ export default function PaymentsPage() {
                         </div>
 
                         <div className="text-xs text-slate-500 mt-1">
-                          Due: {due}
-                          {paid ? ` · Paid: ${paid}` : ''}
+                          Due: {due ? formatDateIT(due) : '-'}
+                          {paid ? ` · Paid: ${formatDateIT(paid)}` : ''}
                           {p.leaseId ? ` · leaseId: ${p.leaseId}` : ''}
                         </div>
 
@@ -1046,7 +1047,7 @@ export default function PaymentsPage() {
                         {effectiveStatus !== 'PAID' && (
                           <button
                             onClick={() => markAsPaid(p)}
-                            className="border rounded-md px-3 py-2 text-sm bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                            className="btn-success text-sm"
                             disabled={busy}
                           >
                             Segna incassato
@@ -1056,14 +1057,14 @@ export default function PaymentsPage() {
                         <button
                           onClick={() => startEdit(p)}
                           disabled={busy}
-                          className="border rounded-md px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+                          className="btn-secondary text-sm"
                         >
                           Modifica
                         </button>
 
                         <button
                           onClick={() => setOpenDocsPaymentId((prev) => (prev === p.id ? null : p.id))}
-                          className="border rounded-md px-3 py-2 text-sm"
+                          className="btn-secondary text-sm"
                           disabled={busy}
                         >
                           {docsOpen ? 'Chiudi documenti' : 'Documenti'}
@@ -1072,7 +1073,7 @@ export default function PaymentsPage() {
                         <button
                           onClick={() => remove(p.id)}
                           disabled={busy}
-                          className="text-sm text-red-600 hover:underline disabled:opacity-50"
+                          className="text-link-danger disabled:opacity-50"
                         >
                           Elimina
                         </button>

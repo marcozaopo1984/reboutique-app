@@ -651,12 +651,12 @@ export default function BreakevenAppartamentiPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100">
+    <div className="app-shell">
       <div className="max-w-[1400px] mx-auto py-8 px-4 space-y-6">
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold">Breakeven Appartamenti</h1>
-            <p className="text-sm text-slate-600">
+            <h1 className="page-title">Breakeven Appartamenti</h1>
+            <p className="page-subtitle">
               Vista per appartamento alla data selezionata. Somme da inizio contratti TENANT attivi fino alla data.
             </p>
           </div>
@@ -670,9 +670,9 @@ export default function BreakevenAppartamentiPage() {
           </button>
         </header>
 
-        {error && <div className="mb-2 bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded">{error}</div>}
+        {error && <div className="alert-error">{error}</div>}
 
-        <div className="bg-white rounded-xl shadow p-4 space-y-3">
+        <div className="surface-card p-5 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="text-sm text-slate-600">Riepilogo (filtri applicati)</div>
@@ -775,7 +775,7 @@ export default function BreakevenAppartamentiPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow p-4">
+        <div className="surface-card p-5">
           <div className="flex items-center justify-between gap-3 mb-3">
             <h2 className="font-medium">Elenco</h2>
             <div className="text-xs text-slate-500">

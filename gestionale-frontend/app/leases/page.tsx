@@ -2,6 +2,7 @@
 
 import { ChangeEvent, useEffect, useMemo, useState } from 'react';
 import { fetchWithAuth } from '@/lib/apiClient';
+import { formatDateIT } from '@/lib/dateFormat';
 import EntityDocuments from '@/components/EntityDocuments';
 import { Field, Input, Select } from '@/components/form/Field';
 
@@ -396,12 +397,12 @@ export default function LeasesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      <div className="max-w-6xl mx-auto py-8 px-4 space-y-6">
+    <div className="app-shell">
+      <div className="app-container space-y-6">
         <header className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold">Leases</h1>
-            <p className="text-sm text-slate-600">
+            <h1 className="page-title">Leases</h1>
+            <p className="page-subtitle">
               Contratti TENANT (property granulare) e LANDLORD (tipicamente APARTMENT). Generate schedule crea i cashflow.
             </p>
           </div>
@@ -409,19 +410,19 @@ export default function LeasesPage() {
           <button
             onClick={loadAll}
             disabled={busy}
-            className="text-sm border rounded px-3 py-1 hover:bg-slate-50 disabled:opacity-50"
+            className="btn-secondary text-sm"
           >
             Refresh
           </button>
         </header>
 
         {error && (
-          <div className="mb-2 bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded">
+          <div className="alert-error">
             {error}
           </div>
         )}
 
-        <div className="bg-white rounded-xl shadow p-4 space-y-3">
+        <div className="surface-card p-5 space-y-4">
           <div className="flex items-center justify-between gap-3">
             <h2 className="font-medium">
               {editingLeaseId ? 'Modifica contratto' : 'Nuovo contratto'}
@@ -695,7 +696,7 @@ export default function LeasesPage() {
             <button
               onClick={saveLease}
               disabled={busy}
-              className="bg-slate-800 text-white px-4 py-2 rounded hover:bg-slate-700 disabled:opacity-50"
+              className="btn-primary"
             >
               {busy ? 'Salvataggio...' : editingLeaseId ? 'Aggiorna' : 'Create'}
             </button>
@@ -704,14 +705,14 @@ export default function LeasesPage() {
               type="button"
               onClick={resetForm}
               disabled={busy}
-              className="border px-4 py-2 rounded hover:bg-slate-50 disabled:opacity-50"
+              className="btn-secondary"
             >
               {editingLeaseId ? 'Annulla modifica' : 'Reset'}
             </button>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow p-4">
+        <div className="surface-card p-5">
           <h2 className="font-medium mb-3">Elenco</h2>
 
           {loading ? (
@@ -763,24 +764,24 @@ export default function LeasesPage() {
                         </div>
 
                         <div className="text-xs text-slate-500 mt-1">
-                          booking: {booking || '-'} · start: {start || '-'}
-                          {end ? ` · end: ${end}` : ' · end: (missing)'}
-                          {nextDue ? ` · nextDue: ${nextDue}` : ''}
+                          booking: {booking ? formatDateIT(booking) : '-'} · start: {start ? formatDateIT(start) : '-'}
+                          {end ? ` · end: ${formatDateIT(end)}` : ' · end: (missing)'}
+                          {nextDue ? ` · nextDue: ${formatDateIT(nextDue)}` : ''}
                         </div>
 
                         <div className="text-xs text-slate-500 mt-1">
                           {x.depositAmount
-                            ? `deposit: ${x.depositAmount} € (${depositDate || 'n/a'})`
+                            ? `deposit: ${x.depositAmount} € (${depositDate ? formatDateIT(depositDate) : 'n/a'})`
                             : 'deposit: -'}
                           {x.type === 'TENANT' && x.depositAmount && depositRefundDate
-                            ? ` · refund: ${depositRefundDate}`
+                            ? ` · refund: ${formatDateIT(depositRefundDate)}`
                             : ''}
-                          {x.adminFeeAmount ? ` · adminFee: ${x.adminFeeAmount} € (${adminFeeDate || 'n/a'})` : ''}
+                          {x.adminFeeAmount ? ` · adminFee: ${x.adminFeeAmount} € (${adminFeeDate ? formatDateIT(adminFeeDate) : 'n/a'})` : ''}
                           {x.bookingCostAmount
-                            ? ` · bookingCost: ${x.bookingCostAmount} € (${bookingCostDate || 'n/a'})`
+                            ? ` · bookingCost: ${x.bookingCostAmount} € (${bookingCostDate ? formatDateIT(bookingCostDate) : 'n/a'})`
                             : ''}
                           {x.registrationTaxAmount
-                            ? ` · regTax: ${x.registrationTaxAmount} € (${registrationTaxDate || 'n/a'})`
+                            ? ` · regTax: ${x.registrationTaxAmount} € (${registrationTaxDate ? formatDateIT(registrationTaxDate) : 'n/a'})`
                             : ''}
                         </div>
 
@@ -791,14 +792,14 @@ export default function LeasesPage() {
                         <button
                           onClick={() => startEdit(x)}
                           disabled={busy}
-                          className="border rounded-md px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+                          className="btn-secondary text-sm"
                         >
                           Modifica
                         </button>
 
                         <button
                           onClick={() => generateSchedule(x.id)}
-                          className="border rounded-md px-3 py-2 text-sm"
+                          className="btn-secondary text-sm"
                           disabled={busy}
                         >
                           Generate schedule
@@ -806,7 +807,7 @@ export default function LeasesPage() {
 
                         <button
                           onClick={() => setOpenDocsLeaseId((prev) => (prev === x.id ? null : x.id))}
-                          className="border rounded-md px-3 py-2 text-sm"
+                          className="btn-secondary text-sm"
                           disabled={busy}
                         >
                           {docsOpen ? 'Chiudi documenti' : 'Documenti'}
@@ -815,7 +816,7 @@ export default function LeasesPage() {
                         <button
                           onClick={() => remove(x.id)}
                           disabled={busy}
-                          className="text-sm text-red-600 hover:underline disabled:opacity-50"
+                          className="text-link-danger disabled:opacity-50"
                         >
                           Elimina
                         </button>

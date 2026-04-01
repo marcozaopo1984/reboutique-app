@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { fetchWithAuth } from '@/lib/apiClient';
+import { formatDateIT } from '@/lib/dateFormat';
 import { Field, Input, Select } from '@/components/form/Field';
 
 type Mode = 'CASSA' | 'COMPETENZA';
@@ -591,32 +592,35 @@ export default function ReportInvestitoriPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      <div className="max-w-7xl mx-auto py-8 px-4 space-y-6">
+    <div className="app-shell">
+      <div className="app-container space-y-6">
         <header className="flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold">Report Investitori</h1>
-            <p className="text-sm text-slate-600">
+            <h1 className="page-title">Report Investitori</h1>
+            <p className="page-subtitle">
               Report riepilogativo con doppia lettura Cassa / Competenza per flussi e redditività per appartamento.
+            </p>
+            <p className="text-xs text-slate-500 mt-1">
+              Periodo selezionato: {formatDateIT(dateFrom)} → {formatDateIT(dateTo)}
             </p>
           </div>
 
           <button
             onClick={loadAll}
             disabled={busy}
-            className="text-sm border rounded px-3 py-1 hover:bg-slate-50 disabled:opacity-50"
+            className="btn-secondary text-sm"
           >
             Refresh
           </button>
         </header>
 
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded">
+          <div className="alert-error">
             {error}
           </div>
         )}
 
-        <div className="bg-white rounded-xl shadow p-4 space-y-3">
+        <div className="surface-card p-5 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
             <Field label="Date 1" required>
               <Input type="date" value={dateFrom} onChange={(e: any) => setDateFrom(e.target.value)} disabled={busy} />
@@ -660,7 +664,7 @@ export default function ReportInvestitoriPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow p-4 overflow-x-auto">
+        <div className="surface-card p-5 overflow-x-auto">
           <div className="flex items-center justify-between gap-3 mb-3">
             <h2 className="font-medium">Tabella 1 · Riepilogo</h2>
             <div className="text-sm text-slate-500">
@@ -673,7 +677,7 @@ export default function ReportInvestitoriPage() {
           ) : !rangeDates ? (
             <div className="text-sm text-red-600">Intervallo date non valido.</div>
           ) : (
-            <table className="min-w-full text-sm border-collapse">
+            <table className="data-table">
               <thead>
                 <tr className="border-b bg-slate-50">
                   <th className="text-left p-3 font-medium">Voce</th>
@@ -694,7 +698,7 @@ export default function ReportInvestitoriPage() {
           )}
         </div>
 
-        <div className="bg-white rounded-xl shadow p-4 overflow-x-auto">
+        <div className="surface-card p-5 overflow-x-auto">
           <div className="flex items-center justify-between gap-3 mb-3">
             <h2 className="font-medium">Tabella 2 · Appartamenti</h2>
             <div className="text-sm text-slate-500">
@@ -709,7 +713,7 @@ export default function ReportInvestitoriPage() {
           ) : apartmentRows.length === 0 ? (
             <div className="text-sm text-slate-500">Nessun appartamento disponibile.</div>
           ) : (
-            <table className="min-w-full text-sm border-collapse">
+            <table className="data-table">
               <thead>
                 <tr className="border-b bg-slate-50">
                   <th className="text-left p-3 font-medium">Apartment ID</th>

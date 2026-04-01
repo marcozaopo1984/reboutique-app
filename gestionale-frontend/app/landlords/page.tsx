@@ -185,30 +185,30 @@ export default function LandlordsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      <div className="max-w-6xl mx-auto py-8 px-4 space-y-6">
+    <div className="app-shell">
+      <div className="app-container space-y-6">
         <header className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold">Landlords</h1>
-            <p className="text-sm text-slate-600">Gestisci proprietari e documenti.</p>
+            <h1 className="page-title">Landlords</h1>
+            <p className="page-subtitle">Gestisci proprietari e documenti.</p>
           </div>
 
           <button
             onClick={loadAll}
             disabled={busy}
-            className="text-sm border rounded px-3 py-1 hover:bg-slate-50 disabled:opacity-50"
+            className="btn-secondary text-sm"
           >
             Refresh
           </button>
         </header>
 
         {error && (
-          <div className="mb-2 bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded">
+          <div className="alert-error">
             {error}
           </div>
         )}
 
-        <div className="bg-white rounded-xl shadow p-4 space-y-3">
+        <div className="surface-card p-5 space-y-4">
           <div className="flex items-center justify-between gap-3">
             <h2 className="font-medium">
               {editingId ? 'Modifica landlord' : 'Nuovo landlord'}
@@ -297,7 +297,7 @@ export default function LandlordsPage() {
             <button
               onClick={save}
               disabled={busy}
-              className="bg-slate-800 text-white px-4 py-2 rounded hover:bg-slate-700 disabled:opacity-50"
+              className="btn-primary"
             >
               {busy ? 'Salvataggio...' : editingId ? 'Aggiorna' : 'Create'}
             </button>
@@ -306,14 +306,14 @@ export default function LandlordsPage() {
               type="button"
               onClick={resetForm}
               disabled={busy}
-              className="border px-4 py-2 rounded hover:bg-slate-50 disabled:opacity-50"
+              className="btn-secondary"
             >
               {editingId ? 'Annulla modifica' : 'Reset'}
             </button>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow p-4">
+        <div className="surface-card p-5">
           <h2 className="font-medium mb-3">Elenco</h2>
 
           {loading ? (
@@ -361,14 +361,14 @@ export default function LandlordsPage() {
                         <button
                           onClick={() => startEdit(l)}
                           disabled={busy}
-                          className="border rounded-md px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+                          className="btn-secondary text-sm"
                         >
                           Modifica
                         </button>
 
                         <button
                           onClick={() => setOpenDocsId((prev) => (prev === l.id ? null : l.id))}
-                          className="border rounded-md px-3 py-2 text-sm"
+                          className="btn-secondary text-sm"
                           disabled={busy}
                         >
                           {docsOpen ? 'Chiudi documenti' : 'Documenti'}
@@ -377,7 +377,7 @@ export default function LandlordsPage() {
                         <button
                           onClick={() => remove(l.id)}
                           disabled={busy}
-                          className="text-sm text-red-600 hover:underline disabled:opacity-50"
+                          className="text-link-danger disabled:opacity-50"
                         >
                           Elimina
                         </button>
