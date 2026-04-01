@@ -85,7 +85,6 @@ const SUMMARY_ROWS: SummaryRow[] = [
   { key: 'occupancy', label: 'Occupancy', kind: 'percent' },
 ];
 
-const cleanStr = (s: string) => (s ?? '').trim();
 const compareStr = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 const todayYmdUtc = () => new Date().toISOString().slice(0, 10);
 
@@ -239,12 +238,6 @@ export default function ReportInvestitoriPage() {
     return m;
   }, [properties]);
 
-  const propertyById = useMemo(() => {
-    const m = new Map<string, Property>();
-    for (const p of properties) m.set(p.id, p);
-    return m;
-  }, [properties]);
-
   const propertyToApartmentId = useMemo(() => {
     const m = new Map<string, string>();
     for (const p of properties) {
@@ -337,7 +330,7 @@ export default function ReportInvestitoriPage() {
       return acc + safeAmount(e.amount);
     }, 0);
 
-  const computeProratedRentTotal = ({
+  const computeRentTotalByMode = ({
     mode,
     side,
     apartmentId,
@@ -347,6 +340,32 @@ export default function ReportInvestitoriPage() {
     apartmentId?: string;
   }) => {
     if (!rangeDates) return 0;
+
+    if (mode === 'CASSA') {
+      if (side === 'IN') {
+        return payments.reduce((total, p) => {
+          if (p.kind !== 'RENT') return total;
+          const lease = p.leaseId ? leaseById.get(p.leaseId) : undefined;
+          if (!lease || lease.type !== 'TENANT') return total;
+          if (!isPaid(p.status)) return total;
+          const paidYmd = toYmd(p.paidDate);
+          if (!inRange(paidYmd, dateFrom, dateTo)) return total;
+          if (apartmentId && resolvePaymentApartmentId(p) !== apartmentId) return total;
+          return total + safeAmount(p.amount);
+        }, 0);
+      }
+
+      return expenses.reduce((total, e) => {
+        if (e.type !== 'RENT_TO_LANDLORD') return total;
+        const lease = e.leaseId ? leaseById.get(e.leaseId) : undefined;
+        if (!lease || lease.type !== 'LANDLORD') return total;
+        if (!isPaid(e.status)) return total;
+        const paidYmd = toYmd(e.paidDate);
+        if (!inRange(paidYmd, dateFrom, dateTo)) return total;
+        if (apartmentId && resolveExpenseApartmentId(e) !== apartmentId) return total;
+        return total + safeAmount(e.amount);
+      }, 0);
+    }
 
     const reportStart = rangeDates.start;
     const reportEndExclusive = rangeDates.endExclusive;
@@ -362,9 +381,7 @@ export default function ReportInvestitoriPage() {
         for (let i = 0; i < leasePayments.length; i += 1) {
           const p = leasePayments[i];
           const dueYmd = toYmd(p.dueDate);
-          const filterYmd = paymentDateForMode(p, mode);
-          if (!inRange(filterYmd, dateFrom, dateTo)) continue;
-          if (mode === 'CASSA' && (!isPaid(p.status) || !filterYmd)) continue;
+          if (!inRange(dueYmd, dateFrom, dateTo)) continue;
           if (apartmentId && resolvePaymentApartmentId(p) !== apartmentId) continue;
 
           const dueDate = ymdToUtcDate(dueYmd);
@@ -397,9 +414,7 @@ export default function ReportInvestitoriPage() {
       for (let i = 0; i < leaseExpenses.length; i += 1) {
         const e = leaseExpenses[i];
         const costYmd = toYmd(e.costDate);
-        const filterYmd = expenseDateForMode(e, mode);
-        if (!inRange(filterYmd, dateFrom, dateTo)) continue;
-        if (mode === 'CASSA' && (!isPaid(e.status) || !filterYmd)) continue;
+        if (!inRange(costYmd, dateFrom, dateTo)) continue;
         if (apartmentId && resolveExpenseApartmentId(e) !== apartmentId) continue;
 
         const costDate = ymdToUtcDate(costYmd);
@@ -483,7 +498,7 @@ export default function ReportInvestitoriPage() {
       bookingCost: null,
       registrationTax: null,
       bookingReceived: leases.filter((l) => inRange(toYmd(l.bookingDate), dateFrom, dateTo)).length,
-      totCanoni: computeProratedRentTotal({ mode: table1InMode, side: 'IN' }),
+      totCanoni: computeRentTotalByMode({ mode: table1InMode, side: 'IN' }),
       occupancy,
     };
 
@@ -508,7 +523,7 @@ export default function ReportInvestitoriPage() {
         table1OutMode,
       ),
       bookingReceived: null,
-      totCanoni: computeProratedRentTotal({ mode: table1OutMode, side: 'OUT' }),
+      totCanoni: computeRentTotalByMode({ mode: table1OutMode, side: 'OUT' }),
       occupancy: null,
     };
 
@@ -530,23 +545,25 @@ export default function ReportInvestitoriPage() {
   ]);
 
   const apartmentRows = useMemo(() => {
-    if (!rangeDates) return [] as Array<{
-      apartmentId: string;
-      label: string;
-      activeRent: number;
-      passiveRent: number;
-      profitability: number | null;
-    }>;
+    if (!rangeDates) {
+      return [] as Array<{
+        apartmentId: string;
+        label: string;
+        activeRent: number;
+        passiveRent: number;
+        profitability: number | null;
+      }>;
+    }
 
     return apartmentIds
       .map((apartmentId) => {
-        const activeRent = computeProratedRentTotal({
+        const activeRent = computeRentTotalByMode({
           mode: table2ActiveMode,
           side: 'IN',
           apartmentId,
         });
 
-        const passiveRent = computeProratedRentTotal({
+        const passiveRent = computeRentTotalByMode({
           mode: table2PassiveMode,
           side: 'OUT',
           apartmentId,
@@ -639,7 +656,7 @@ export default function ReportInvestitoriPage() {
           </div>
 
           <div className="text-xs text-slate-500">
-            Per i Tot Canoni la quota in competenza/cassa è calcolata in modo proporzionale sull’intersezione tra il periodo selezionato e l’intervallo del canone del singolo movimento.
+            In modalità Competenza i Tot Canoni e i Canoni Attivi/Passivi sono ripartiti pro-quota sul periodo selezionato. In modalità Cassa, invece, viene conteggiato l’intero importo se il movimento è pagato nell’intervallo selezionato.
           </div>
         </div>
 
