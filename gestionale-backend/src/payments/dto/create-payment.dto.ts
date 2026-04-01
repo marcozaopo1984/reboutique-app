@@ -6,6 +6,7 @@ export const PAYMENT_KINDS = [
   'OTHER',
   'ADMIN_FEE',
   'DEPOSIT',
+  'DEPOSIT_RETURN_FROM_LANDLORD',
 ] as const;
 
 export type PaymentKind = (typeof PAYMENT_KINDS)[number];
@@ -18,13 +19,17 @@ export class CreatePaymentDto {
   @IsString()
   leaseId?: string;
 
+  @IsOptional()
   @IsString()
-  tenantId!: string;
+  tenantId?: string;
+
+  @IsOptional()
+  @IsString()
+  landlordId?: string;
 
   @IsString()
   propertyId!: string;
 
-  // ✅ NEW: chiave contabile (APARTMENT)
   @IsOptional()
   @IsString()
   apartmentId?: string;
@@ -34,7 +39,7 @@ export class CreatePaymentDto {
   buildingId?: string;
 
   @IsISO8601()
-  dueDate!: string; // "YYYY-MM-DD"
+  dueDate!: string;
 
   @IsOptional()
   @IsISO8601()
@@ -47,7 +52,6 @@ export class CreatePaymentDto {
   @IsString()
   currency?: string;
 
-  // ✅ include ADMIN_FEE e DEPOSIT
   @IsIn(PAYMENT_KINDS)
   kind!: PaymentKind;
 
@@ -55,8 +59,7 @@ export class CreatePaymentDto {
   @IsIn(PAYMENT_STATUSES)
   status?: PaymentStatus;
 
-  // opzionale
   @IsOptional()
   @IsString()
-  period?: string; // es "2026-02"
+  period?: string;
 }

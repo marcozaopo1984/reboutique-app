@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { FirebaseService } from '../firebase/firebase.service';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
@@ -29,16 +29,35 @@ export class ExpensesService {
     return out;
   }
 
+  private normalizePaidFields(
+    status: string | undefined,
+    paidDate: string | undefined,
+    existing?: any,
+  ) {
+    const finalStatus = status ?? existing?.status ?? 'PLANNED';
+    const finalPaidDate = paidDate ?? existing?.paidDate;
+
+    if (String(finalStatus).toUpperCase() === 'PAID' && !finalPaidDate) {
+      throw new BadRequestException('paidDate is required when status is PAID');
+    }
+
+    return {
+      status: finalStatus,
+      paidDate: finalPaidDate,
+    };
+  }
+
   // ---- CRUD ----
   async create(holderId: string, dto: CreateExpenseDto) {
     const col = this.collection(holderId);
+    const paidFields = this.normalizePaidFields(dto.status, dto.paidDate);
     const data = this.clean({
       ...dto,
-      status: dto.status ?? 'PLANNED',
+      status: paidFields.status,
       currency: dto.currency ?? 'EUR',
       createdAt: new Date(),
       updatedAt: new Date(),
-      paidDate: dto.paidDate,
+      paidDate: paidFields.paidDate,
     });
 
     const ref = await col.add(data);
@@ -62,8 +81,13 @@ export class ExpensesService {
     const doc = await ref.get();
     if (!doc.exists) throw new NotFoundException('Expense not found');
 
+    const existing = doc.data() as any;
+    const paidFields = this.normalizePaidFields(dto.status, dto.paidDate, existing);
+
     const data = this.clean({
       ...dto,
+      status: paidFields.status,
+      paidDate: paidFields.paidDate,
       updatedAt: new Date(),
     });
 

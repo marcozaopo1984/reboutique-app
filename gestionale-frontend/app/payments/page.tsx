@@ -433,8 +433,11 @@ export default function PaymentsPage() {
     }
 
     const prop = properties.find((p) => p.id === derivedPropertyId);
-    const resolvedPaidDate =
-      cleanStr(form.paidDate) || (form.status === 'PAID' ? todayYmdUtc() : undefined);
+    if (form.status === 'PAID' && !cleanStr(form.paidDate)) {
+      return setError('Se status è PAID, paidDate è obbligatoria');
+    }
+
+    const resolvedPaidDate = cleanStr(form.paidDate) || undefined;
 
     const body: any = {
       leaseId: form.manualMode ? undefined : form.leaseId || undefined,

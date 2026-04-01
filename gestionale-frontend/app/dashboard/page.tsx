@@ -40,7 +40,6 @@ export default function HolderDashboard() {
           <p>Gestisci l’anagrafica dei proprietari e i relativi dati.</p>
         </Link>
 
-        {/* ✅ NEW: View Breakeven Appartamenti */}
         <Link
           href="/breakeven-appartamenti"
           className="border rounded-lg p-6 shadow hover:bg-gray-50"
@@ -48,6 +47,16 @@ export default function HolderDashboard() {
           <h2 className="text-xl font-semibold mb-2">Breakeven Appartamenti</h2>
           <p>
             View di riepilogo costi/ricavi per appartamento con calcolo breakeven e margine mensile.
+          </p>
+        </Link>
+
+        <Link
+          href="/report-investitori"
+          className="border rounded-lg p-6 shadow hover:bg-gray-50"
+        >
+          <h2 className="text-xl font-semibold mb-2">Report Investitori</h2>
+          <p>
+            Report con doppia lettura Cassa / Competenza su flussi IN/OUT e redditività per appartamento.
           </p>
         </Link>
       </div>

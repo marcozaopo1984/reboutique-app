@@ -36,11 +36,6 @@ export class PaymentsService {
     return out;
   }
 
-  /**
-   * ✅ Deriva apartmentId dalla property:
-   * - se property.type == 'APARTMENT' => apartmentId = propertyId
-   * - altrimenti => apartmentId = property.apartmentId (obbligatorio)
-   */
   private async deriveApartmentId(holderId: string, propertyId: string): Promise<string> {
     const propSnap = await this.propertiesDoc(holderId, propertyId).get();
     if (!propSnap.exists) throw new NotFoundException(`Property ${propertyId} not found`);
@@ -59,8 +54,16 @@ export class PaymentsService {
     return apartmentId;
   }
 
+  private ensurePaidDateInvariant(data: { status?: string; paidDate?: string }) {
+    if ((data.status ?? '').toUpperCase() === 'PAID' && !data.paidDate) {
+      throw new BadRequestException('paidDate is required when status is PAID');
+    }
+  }
+
   async create(holderId: string, dto: CreatePaymentDto) {
     const col = this.paymentsCollection(holderId);
+
+    this.ensurePaidDateInvariant(dto);
 
     const apartmentId =
       dto.apartmentId ??
@@ -90,6 +93,12 @@ export class PaymentsService {
     const snap = await ref.get();
     if (!snap.exists) throw new NotFoundException(`Payment ${paymentId} not found`);
 
+    const current = snap.data() as any;
+    this.ensurePaidDateInvariant({
+      status: dto.status ?? current?.status,
+      paidDate: dto.paidDate ?? current?.paidDate,
+    });
+
     let apartmentId = dto.apartmentId;
     if (!apartmentId && dto.propertyId) {
       apartmentId = await this.deriveApartmentId(holderId, dto.propertyId);
@@ -115,7 +124,6 @@ export class PaymentsService {
     return { success: true };
   }
 
-  // ---- FILES ----
   async addFile(holderId: string, paymentId: string, dto: CreatePaymentFileDto) {
     const paymentRef = this.paymentsCollection(holderId).doc(paymentId);
     const paymentSnap = await paymentRef.get();

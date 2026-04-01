@@ -405,8 +405,10 @@ export default function ExpensesPage() {
     const amountNum = toNum(form.amount);
     if (amountNum === undefined || Number.isNaN(amountNum)) return setError('Importo non valido');
 
+    if (form.status === 'PAID' && !cleanStr(form.paidDate)) return setError('Se status è PAID, paidDate è obbligatoria');
+
     const costMonth = cleanStr(form.costMonth) || monthFromDate(form.costDate) || undefined;
-    const resolvedPaidDate = cleanStr(form.paidDate) || (form.status === 'PAID' ? todayYmdUtc() : undefined);
+    const resolvedPaidDate = cleanStr(form.paidDate) || undefined;
 
     const body: any = {
       propertyId: form.propertyId,

@@ -15,9 +15,12 @@ export class UpdatePaymentDto {
 
   @IsOptional()
   @IsString()
+  landlordId?: string;
+
+  @IsOptional()
+  @IsString()
   propertyId?: string;
 
-  // ✅ NEW: chiave contabile (APARTMENT)
   @IsOptional()
   @IsString()
   apartmentId?: string;
@@ -28,7 +31,7 @@ export class UpdatePaymentDto {
 
   @IsOptional()
   @IsISO8601()
-  dueDate?: string; // "YYYY-MM-DD"
+  dueDate?: string;
 
   @IsOptional()
   @IsISO8601()
@@ -42,7 +45,6 @@ export class UpdatePaymentDto {
   @IsString()
   currency?: string;
 
-  // ✅ include RENT | BUILDING_FEE | OTHER | ADMIN_FEE | DEPOSIT
   @IsOptional()
   @IsIn(PAYMENT_KINDS)
   kind?: PaymentKind;
@@ -53,5 +55,5 @@ export class UpdatePaymentDto {
 
   @IsOptional()
   @IsString()
-  period?: string; // es "2026-02"
+  period?: string;
 }
