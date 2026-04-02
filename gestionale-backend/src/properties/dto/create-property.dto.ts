@@ -1,4 +1,4 @@
-import { IsBoolean, IsOptional, IsString, IsIn } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, IsIn, IsNumber } from 'class-validator';
 
 export const PROPERTY_TYPES = ['APARTMENT', 'ROOM', 'BED'] as const;
 export type PropertyType = (typeof PROPERTY_TYPES)[number];
@@ -53,5 +53,22 @@ export class CreatePropertyDto {
   @IsBoolean()
   isPublished?: boolean;
 
-  
+
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @IsOptional()
+  @IsNumber()
+  baseMonthlyRent?: number;
+
+  @IsOptional()
+  @IsNumber()
+  monthlyUtilities?: number;
+
+  @IsOptional()
+  @IsNumber()
+  depositMonths?: number;
+
 }
+

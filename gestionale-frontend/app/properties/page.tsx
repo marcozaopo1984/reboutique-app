@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { fetchWithAuth } from '@/lib/apiClient';
 import EntityDocuments from '@/components/EntityDocuments';
 import { Field, Input, Select } from '@/components/form/Field';
@@ -98,20 +98,6 @@ export default function PropertiesPage() {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const apartments = useMemo(() => {
-    return items.filter((p) => p.type === 'APARTMENT');
-  }, [items]);
-
-  const apartmentLabel = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const a of apartments) {
-      const code = a.code ?? a.id;
-      const name = a.name ? ` – ${a.name}` : '';
-      m.set(a.id, `${code}${name}`);
-    }
-    return m;
-  }, [apartments]);
-
   const loadAll = async () => {
     setLoading(true);
     setError(null);
@@ -153,8 +139,8 @@ export default function PropertiesPage() {
     if (!cleanStr(form.code)) throw new Error('Codice obbligatorio');
     if (!cleanStr(form.name)) throw new Error('Nome obbligatorio');
 
-    if ((form.type === 'ROOM' || form.type === 'BED') && !form.apartmentId) {
-      throw new Error('Seleziona apartmentId (appartamento) per ROOM/BED');
+    if ((form.type === 'ROOM' || form.type === 'BED') && !cleanStr(form.apartmentId)) {
+      throw new Error('Inserisci Apartment ID per ROOM/BED');
     }
 
     return {
@@ -171,7 +157,8 @@ export default function PropertiesPage() {
       isPublished: !!form.isPublished,
 
       buildingId: cleanStr(form.buildingId) || undefined,
-      apartmentId: form.type === 'APARTMENT' ? undefined : form.apartmentId || undefined,
+      apartmentId:
+        form.type === 'APARTMENT' ? undefined : cleanStr(form.apartmentId) || undefined,
     };
   };
 
@@ -243,8 +230,8 @@ export default function PropertiesPage() {
           <div>
             <h1 className="page-title">Properties</h1>
             <p className="page-subtitle">
-              Gestisci immobili. Per ROOM/BED imposta anche l’<b>apartmentId</b>{' '}
-              (appartamento contabile).
+              Gestisci immobili. Per ROOM/BED imposta anche l’<b>Apartment ID</b>{' '}
+              come stringa libera digitata a mano.
             </p>
           </div>
 
@@ -331,24 +318,18 @@ export default function PropertiesPage() {
             </Field>
 
             {form.type === 'ROOM' || form.type === 'BED' ? (
-              <Field label="ApartmentId (contabile)" required>
-                <Select
+              <Field label="Apartment ID" required>
+                <Input
                   value={form.apartmentId}
                   onChange={(e: any) => onChange('apartmentId', e.target.value)}
+                  placeholder="Es. Argentina 4"
                   disabled={busy}
-                >
-                  <option value="">Seleziona appartamento *</option>
-                  {apartments.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {apartmentLabel.get(a.id) ?? a.id}
-                    </option>
-                  ))}
-                </Select>
+                />
               </Field>
             ) : (
-              <Field label="ApartmentId (contabile)">
+              <Field label="Apartment ID">
                 <div className="h-10 flex items-center text-sm text-slate-500">
-                  (APARTMENT: apartmentId = id)
+                  (APARTMENT: non richiesto)
                 </div>
               </Field>
             )}
@@ -434,10 +415,10 @@ export default function PropertiesPage() {
                 const title = `${p.code ?? p.id}${p.name ? ` – ${p.name}` : ''}`;
                 const aptText =
                   p.type === 'APARTMENT'
-                    ? 'APARTMENT (contabile)'
+                    ? 'APARTMENT'
                     : p.apartmentId
-                      ? `apartmentId: ${apartmentLabel.get(p.apartmentId) ?? p.apartmentId}`
-                      : 'apartmentId: (mancante)';
+                      ? `Apartment ID: ${p.apartmentId}`
+                      : 'Apartment ID: (mancante)';
 
                 return (
                   <div

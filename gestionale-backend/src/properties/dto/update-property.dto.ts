@@ -1,4 +1,4 @@
-import { IsBoolean, IsIn, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString, IsNumber } from 'class-validator';
 import { PROPERTY_TYPES } from './create-property.dto';
 import type { PropertyType } from './create-property.dto';
 
@@ -36,4 +36,23 @@ export class UpdatePropertyDto {
   @IsOptional()
   @IsBoolean()
   isPublished?: boolean;
+
+
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @IsOptional()
+  @IsNumber()
+  baseMonthlyRent?: number;
+
+  @IsOptional()
+  @IsNumber()
+  monthlyUtilities?: number;
+
+  @IsOptional()
+  @IsNumber()
+  depositMonths?: number;
+
 }
+
