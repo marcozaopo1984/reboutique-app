@@ -1,4 +1,4 @@
-import { IsISO8601, IsNumber, IsOptional, IsString, IsIn } from 'class-validator';
+import { IsBoolean, IsISO8601, IsNumber, IsOptional, IsString, IsIn } from 'class-validator';
 import { PAYMENT_KINDS } from './create-payment.dto';
 import type { PaymentKind, PaymentStatus } from './create-payment.dto';
 
@@ -44,6 +44,10 @@ export class UpdatePaymentDto {
   @IsOptional()
   @IsString()
   currency?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  discounted?: boolean;
 
   @IsOptional()
   @IsIn(PAYMENT_KINDS)

@@ -135,6 +135,17 @@ const valueFromInputChange = (arg: unknown): string => {
 
 const monthFromDate = (d: string) => (d && d.length >= 7 ? d.slice(0, 7) : '');
 
+const MANUAL_EXPENSE_TYPES = [
+  'Agenzia',
+  'Articoli Casalinghi',
+  'Consumi',
+  'Elettrodomestici',
+  'Imposte e tasse',
+  'Manutenzioni',
+  'Mobili',
+  'Ristrutturazioni',
+] as const;
+
 const fmtStatus = (s: string) => {
   if (s === 'PLANNED') return 'PLANNED';
   if (s === 'PAID') return 'PAID';
@@ -532,6 +543,15 @@ export default function ExpensesPage() {
     return Array.from(s).sort(compareStr);
   }, [items]);
 
+  const expenseTypeOptions = useMemo(() => {
+    const currentType = cleanStr(form.type);
+    const options: string[] = [...MANUAL_EXPENSE_TYPES];
+    if (currentType && !options.includes(currentType)) {
+      options.push(currentType);
+    }
+    return options;
+  }, [form.type]);
+
   const availableScopes = useMemo(() => {
     const s = new Set<string>();
     for (const e of items) if (e.scope) s.add(String(e.scope));
@@ -850,12 +870,18 @@ export default function ExpensesPage() {
             </Field>
 
             <Field label="Type" required>
-              <Input
+              <Select
                 value={form.type}
-                onChange={handleInput('type')}
-                placeholder="Es: CONDOMINIO, BOLLETTA, MANUTENZIONE..."
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => onChange('type', e.target.value)}
                 disabled={busy}
-              />
+              >
+                <option value="">Seleziona tipo *</option>
+                {expenseTypeOptions.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </Select>
             </Field>
 
             <Field label="Cost date" required>

@@ -26,14 +26,17 @@ type Lease = {
   nextPaymentDue?: any;
 
   monthlyRentWithoutBills: number;
+  monthlyRentDiscounted?: boolean;
   monthlyRentWithBills?: number;
   billsIncludedAmount?: number;
 
   dueDayOfMonth?: number;
 
   depositAmount?: number;
+  depositDiscounted?: boolean;
   depositDate?: any;
   adminFeeAmount?: number;
+  adminFeeDiscounted?: boolean;
   adminFeeDate?: any;
 
   bookingCostAmount?: number;
@@ -56,14 +59,17 @@ type CreateLeaseForm = {
   nextPaymentDue: string;
 
   monthlyRentWithoutBills: string;
+  monthlyRentDiscounted: boolean;
   monthlyRentWithBills: string;
   billsIncludedAmount: string;
 
   dueDayOfMonth: string;
 
   depositAmount: string;
+  depositDiscounted: boolean;
   depositDate: string;
   adminFeeAmount: string;
+  adminFeeDiscounted: boolean;
   adminFeeDate: string;
 
   bookingCostAmount: string;
@@ -107,6 +113,7 @@ const toYmd = (v: any): string => {
 };
 
 const todayYmd = () => new Date().toISOString().slice(0, 10);
+const discountedLabel = (flag?: boolean) => (flag ? ' [discounted]' : '');
 
 const addDaysYmd = (ymd: string, days: number) => {
   if (!ymd) return '';
@@ -153,12 +160,15 @@ const emptyForm = (): CreateLeaseForm => {
     endDate: '',
     nextPaymentDue: '',
     monthlyRentWithoutBills: '',
+    monthlyRentDiscounted: false,
     monthlyRentWithBills: '',
     billsIncludedAmount: '',
     dueDayOfMonth: '',
     depositAmount: '',
+    depositDiscounted: false,
     depositDate: today,
     adminFeeAmount: '',
+    adminFeeDiscounted: false,
     adminFeeDate: today,
     bookingCostAmount: '',
     bookingCostDate: today,
@@ -179,12 +189,15 @@ const leaseToForm = (x: Lease): CreateLeaseForm => {
     endDate: toYmd(x.endDate),
     nextPaymentDue: toYmd(x.nextPaymentDue),
     monthlyRentWithoutBills: toNumString(x.monthlyRentWithoutBills),
+    monthlyRentDiscounted: Boolean(x.monthlyRentDiscounted),
     monthlyRentWithBills: toNumString(x.monthlyRentWithBills),
     billsIncludedAmount: toNumString(x.billsIncludedAmount),
     dueDayOfMonth: toNumString(x.dueDayOfMonth),
     depositAmount: toNumString(x.depositAmount),
+    depositDiscounted: Boolean(x.depositDiscounted),
     depositDate: toYmd(x.depositDate) || booking,
     adminFeeAmount: toNumString(x.adminFeeAmount),
+    adminFeeDiscounted: Boolean(x.adminFeeDiscounted),
     adminFeeDate: toYmd(x.adminFeeDate) || booking,
     bookingCostAmount: toNumString(x.bookingCostAmount),
     bookingCostDate: toYmd(x.bookingCostDate) || booking,
@@ -208,7 +221,7 @@ export default function LeasesPage() {
 
   const [form, setForm] = useState<CreateLeaseForm>(emptyForm());
 
-  const onChange = (key: keyof CreateLeaseForm, value: string) => {
+  const onChange = <K extends keyof CreateLeaseForm>(key: K, value: CreateLeaseForm[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -312,14 +325,17 @@ export default function LeasesPage() {
       nextPaymentDue: cleanStr(form.nextPaymentDue) || undefined,
 
       monthlyRentWithoutBills: net,
+      monthlyRentDiscounted: form.monthlyRentDiscounted,
       monthlyRentWithBills: toNum(form.monthlyRentWithBills),
       billsIncludedAmount: toNum(form.billsIncludedAmount),
 
       dueDayOfMonth: toNum(form.dueDayOfMonth),
 
       depositAmount: toNum(form.depositAmount),
+      depositDiscounted: form.depositDiscounted,
       depositDate: cleanStr(form.depositDate) || undefined,
       adminFeeAmount: toNum(form.adminFeeAmount),
+      adminFeeDiscounted: form.adminFeeDiscounted,
       adminFeeDate: cleanStr(form.adminFeeDate) || undefined,
 
       bookingCostAmount: toNum(form.bookingCostAmount),
@@ -603,6 +619,18 @@ export default function LeasesPage() {
               />
             </Field>
 
+            <Field label="Canone discounted">
+              <label className="flex items-center gap-2 text-sm text-slate-700 border rounded-md px-3 py-2 bg-white">
+                <input
+                  type="checkbox"
+                  checked={form.monthlyRentDiscounted}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => onChange('monthlyRentDiscounted', e.target.checked)}
+                  disabled={busy}
+                />
+                Discounted
+              </label>
+            </Field>
+
             <div className="md:col-span-3 border-t pt-3 mt-1">
               <div className="text-sm font-medium mb-2">Cashflow extra</div>
 
@@ -626,7 +654,17 @@ export default function LeasesPage() {
                   />
                 </Field>
 
-                <div className="hidden md:block" />
+                <Field label="Deposit discounted">
+                  <label className="flex items-center gap-2 text-sm text-slate-700 border rounded-md px-3 py-2 bg-white">
+                    <input
+                      type="checkbox"
+                      checked={form.depositDiscounted}
+                      onChange={(e: ChangeEvent<HTMLInputElement>) => onChange('depositDiscounted', e.target.checked)}
+                      disabled={busy}
+                    />
+                    Discounted
+                  </label>
+                </Field>
 
                 <Field label="Admin fee amount">
                   <Input
@@ -647,7 +685,17 @@ export default function LeasesPage() {
                   />
                 </Field>
 
-                <div className="hidden md:block" />
+                <Field label="Admin fee discounted">
+                  <label className="flex items-center gap-2 text-sm text-slate-700 border rounded-md px-3 py-2 bg-white">
+                    <input
+                      type="checkbox"
+                      checked={form.adminFeeDiscounted}
+                      onChange={(e: ChangeEvent<HTMLInputElement>) => onChange('adminFeeDiscounted', e.target.checked)}
+                      disabled={busy}
+                    />
+                    Discounted
+                  </label>
+                </Field>
 
                 <Field label="Booking cost amount">
                   <Input
@@ -757,7 +805,7 @@ export default function LeasesPage() {
                         </div>
 
                         <div className="text-sm text-slate-600">
-                          net: {x.monthlyRentWithoutBills ?? '-'} €
+                          net: {x.monthlyRentWithoutBills ?? '-'} €{discountedLabel(x.monthlyRentDiscounted)}
                           {x.monthlyRentWithBills !== undefined ? ` · gross: ${x.monthlyRentWithBills} €` : ''}
                           {x.billsIncludedAmount !== undefined ? ` · bills: ${x.billsIncludedAmount} €` : ''}
                           {x.dueDayOfMonth ? ` · dueDay: ${x.dueDayOfMonth}` : ''}
@@ -771,12 +819,12 @@ export default function LeasesPage() {
 
                         <div className="text-xs text-slate-500 mt-1">
                           {x.depositAmount
-                            ? `deposit: ${x.depositAmount} € (${depositDate ? formatDateIT(depositDate) : 'n/a'})`
+                            ? `deposit: ${x.depositAmount} € (${depositDate ? formatDateIT(depositDate) : 'n/a'})${discountedLabel(x.depositDiscounted)}`
                             : 'deposit: -'}
                           {x.type === 'TENANT' && x.depositAmount && depositRefundDate
                             ? ` · refund: ${formatDateIT(depositRefundDate)}`
                             : ''}
-                          {x.adminFeeAmount ? ` · adminFee: ${x.adminFeeAmount} € (${adminFeeDate ? formatDateIT(adminFeeDate) : 'n/a'})` : ''}
+                          {x.adminFeeAmount ? ` · adminFee: ${x.adminFeeAmount} € (${adminFeeDate ? formatDateIT(adminFeeDate) : 'n/a'})${discountedLabel(x.adminFeeDiscounted)}` : ''}
                           {x.bookingCostAmount
                             ? ` · bookingCost: ${x.bookingCostAmount} € (${bookingCostDate ? formatDateIT(bookingCostDate) : 'n/a'})`
                             : ''}

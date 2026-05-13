@@ -20,12 +20,15 @@ type LeaseDoc = {
   externalId?: string;
 
   monthlyRentWithoutBills: number;
+  monthlyRentDiscounted?: boolean;
   monthlyRentWithBills?: number;
   billsIncludedAmount?: number;
 
   depositAmount?: number;
+  depositDiscounted?: boolean;
   depositDate?: Date;
   adminFeeAmount?: number;
+  adminFeeDiscounted?: boolean;
   adminFeeDate?: Date;
   otherFeesAmount?: number;
 
@@ -262,12 +265,15 @@ export class LeasesService {
       externalId: dto.externalId,
 
       monthlyRentWithoutBills: dto.monthlyRentWithoutBills,
+      monthlyRentDiscounted: dto.monthlyRentDiscounted ?? false,
       monthlyRentWithBills: dto.monthlyRentWithBills,
       billsIncludedAmount: dto.billsIncludedAmount,
 
       depositAmount: dto.depositAmount,
+      depositDiscounted: dto.depositDiscounted ?? false,
       depositDate,
       adminFeeAmount: dto.adminFeeAmount,
+      adminFeeDiscounted: dto.adminFeeDiscounted ?? false,
       adminFeeDate,
       otherFeesAmount: dto.otherFeesAmount,
 
@@ -514,6 +520,9 @@ export class LeasesService {
     const buildingId = aptSnap.exists ? (aptSnap.data() as any)?.buildingId : undefined;
 
     const amountNet: number = Number(lease.monthlyRentWithoutBills);
+    const monthlyRentDiscounted = Boolean(lease.monthlyRentDiscounted);
+    const depositDiscounted = Boolean(lease.depositDiscounted);
+    const adminFeeDiscounted = Boolean(lease.adminFeeDiscounted);
     const now = new Date();
 
     const bookingDate: Date | undefined = this.parseAnyDateLike(lease.bookingDate);
@@ -546,6 +555,7 @@ export class LeasesService {
             amount: depositAmount,
             currency: 'EUR',
             kind: 'DEPOSIT',
+            discounted: depositDiscounted,
             status: 'PLANNED',
             period: this.monthKey(depositDate),
             generatedFromLeaseSchedule: true,
@@ -569,6 +579,7 @@ export class LeasesService {
             amount: adminFeeAmount,
             currency: 'EUR',
             kind: 'ADMIN_FEE',
+            discounted: adminFeeDiscounted,
             status: 'PLANNED',
             period: this.monthKey(adminFeeDate),
             generatedFromLeaseSchedule: true,
@@ -590,6 +601,7 @@ export class LeasesService {
             amount: depositAmount,
             currency: 'EUR',
             type: 'DEPOSIT_TO_LANDLORD',
+            discounted: depositDiscounted,
             scope: 'UNIT',
             status: 'PLANNED',
             notes: undefined,
@@ -613,6 +625,7 @@ export class LeasesService {
               amount: depositAmount,
               currency: 'EUR',
               kind: 'DEPOSIT_RETURN_FROM_LANDLORD',
+              discounted: depositDiscounted,
               status: 'PLANNED',
               period: this.monthKey(endDate),
               generatedFromLeaseSchedule: true,
@@ -635,6 +648,7 @@ export class LeasesService {
             amount: adminFeeAmount,
             currency: 'EUR',
             type: 'ADMIN_FEE_TO_LANDLORD',
+            discounted: adminFeeDiscounted,
             scope: 'UNIT',
             status: 'PLANNED',
             notes: undefined,
@@ -700,6 +714,7 @@ export class LeasesService {
           amount: depositAmount,
           currency: 'EUR',
           type: 'DEPOSIT_REFUND',
+          discounted: depositDiscounted,
           scope: 'UNIT',
           status: 'PLANNED',
           notes: undefined,
@@ -765,6 +780,7 @@ export class LeasesService {
             amount,
             currency: 'EUR',
             kind: 'RENT',
+            discounted: monthlyRentDiscounted,
             status: 'PLANNED',
             period,
             generatedFromLeaseSchedule: true,
@@ -784,6 +800,7 @@ export class LeasesService {
             amount: Number(amountNet),
             currency: 'EUR',
             type: 'RENT_TO_LANDLORD',
+            discounted: monthlyRentDiscounted,
             scope: 'UNIT',
             status: 'PLANNED',
             notes: undefined,

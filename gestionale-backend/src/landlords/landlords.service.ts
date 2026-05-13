@@ -17,6 +17,33 @@ export class LandlordsService {
     return cleaned;
   }
 
+  private normalizeApartmentIds(value: unknown): string[] | undefined {
+    if (value === undefined || value === null) return undefined;
+
+    const rawValues = Array.isArray(value)
+      ? value
+      : typeof value === 'string'
+        ? value.split(/[\n,;]+/)
+        : [];
+
+    return Array.from(
+      new Set(
+        rawValues
+          .map((v) => (typeof v === 'string' ? v.trim() : ''))
+          .filter(Boolean),
+      ),
+    );
+  }
+
+  private normalizeLandlordDto<T extends CreateLandlordDto | UpdateLandlordDto>(dto: T): T {
+    if (!Object.prototype.hasOwnProperty.call(dto, 'apartmentIds')) return dto;
+
+    return {
+      ...dto,
+      apartmentIds: this.normalizeApartmentIds((dto as any).apartmentIds) ?? [],
+    } as T;
+  }
+
   private landlordsCollection(holderId: string) {
     return this.firebaseService.firestore
       .collection('holders')
@@ -30,7 +57,7 @@ export class LandlordsService {
 
   async create(holderId: string, dto: CreateLandlordDto) {
     const data = this.cleanData({
-      ...dto,
+      ...this.normalizeLandlordDto(dto),
       createdAt: new Date(),
       updatedAt: new Date(),
     } as any);
@@ -57,7 +84,7 @@ export class LandlordsService {
     if (!doc.exists) throw new NotFoundException(`Landlord ${landlordId} not found`);
 
     const updateData = this.cleanData({
-      ...dto,
+      ...this.normalizeLandlordDto(dto),
       updatedAt: new Date(),
     } as any);
 

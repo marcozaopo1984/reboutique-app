@@ -75,7 +75,7 @@ const emptyForm = (): CreateTenantForm => ({
   documentType: '',
   documentNumber: '',
   school: '',
-  status: 'CURRENT',
+  status: 'PENDING',
   notes: '',
 });
 
@@ -124,7 +124,7 @@ const tenantToForm = (tenant: Tenant): CreateTenantForm => ({
   documentType: tenant.documentType ?? '',
   documentNumber: tenant.documentNumber ?? '',
   school: tenant.school ?? '',
-  status: tenant.status ?? 'CURRENT',
+  status: tenant.status ?? 'PENDING',
   notes: tenant.notes ?? '',
 });
 
@@ -190,7 +190,6 @@ export default function TenantsPage() {
       documentNumber: cleanStr(form.documentNumber) || undefined,
 
       school: cleanStr(form.school) || undefined,
-      status: form.status,
 
       notes: cleanStr(form.notes) || undefined,
     };
@@ -297,6 +296,10 @@ export default function TenantsPage() {
             )}
           </div>
 
+          <div className="text-xs text-slate-500">
+            Lo stato del tenant è calcolato automaticamente dal contratto TENANT con booking date più recente.
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <Field label="Nome" required>
               <Input
@@ -316,17 +319,13 @@ export default function TenantsPage() {
               />
             </Field>
 
-            <Field label="Stato" required>
-              <Select
+            <Field label="Stato">
+              <Input
                 value={form.status}
-                onChange={(e: any) => onChange('status', e.target.value as TenantStatus)}
-                disabled={busy}
-              >
-                <option value="CURRENT">CURRENT</option>
-                <option value="INCOMING">INCOMING</option>
-                <option value="PAST">PAST</option>
-                <option value="PENDING">PENDING</option>
-              </Select>
+                disabled
+                readOnly
+                placeholder="PENDING"
+              />
             </Field>
 
             <Field label="Email">
@@ -496,7 +495,7 @@ export default function TenantsPage() {
                         </div>
 
                         <div className="text-xs text-slate-500 mt-1">
-                          status: {t.status ?? 'CURRENT'}
+                          status: {t.status ?? 'PENDING'}
                           {t.nationality ? ` · ${t.nationality}` : ''}
                           {typeof t.euCitizen === 'boolean' ? ` · UE: ${t.euCitizen ? 'Sì' : 'No'}` : ''}
                           {t.birthday ? ` · nascita: ${formatDateIT(t.birthday)}` : ''}

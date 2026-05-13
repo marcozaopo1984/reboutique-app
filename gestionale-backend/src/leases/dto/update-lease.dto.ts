@@ -1,4 +1,4 @@
-import { IsEnum, IsISO8601, IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsEnum, IsISO8601, IsNumber, IsOptional, IsString } from 'class-validator';
 import { LeaseType } from './create-lease.dto';
 
 export class UpdateLeaseDto {
@@ -43,6 +43,10 @@ export class UpdateLeaseDto {
   monthlyRentWithoutBills?: number;
 
   @IsOptional()
+  @IsBoolean()
+  monthlyRentDiscounted?: boolean;
+
+  @IsOptional()
   @IsNumber()
   monthlyRentWithBills?: number;
 
@@ -56,12 +60,20 @@ export class UpdateLeaseDto {
   depositAmount?: number;
 
   @IsOptional()
+  @IsBoolean()
+  depositDiscounted?: boolean;
+
+  @IsOptional()
   @IsISO8601()
   depositDate?: string;
 
   @IsOptional()
   @IsNumber()
   adminFeeAmount?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  adminFeeDiscounted?: boolean;
 
   @IsOptional()
   @IsISO8601()

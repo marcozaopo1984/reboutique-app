@@ -1,5 +1,6 @@
 // src/tenants/tenants.service.ts
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { LeaseType } from '../leases/dto/create-lease.dto';
 import { FirebaseService } from '../firebase/firebase.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
@@ -19,6 +20,116 @@ export class TenantsService {
       .collection('holders')
       .doc(holderId)
       .collection('tenants');
+  }
+
+  private leasesCollection(holderId: string) {
+    return this.firebaseService.firestore
+      .collection('holders')
+      .doc(holderId)
+      .collection('leases');
+  }
+
+  private parseAnyDateLike(value: any): Date | undefined {
+    if (value === null || value === undefined) return undefined;
+
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? undefined : value;
+    }
+
+    if (typeof value === 'string') {
+      const s = value.trim();
+      if (!s) return undefined;
+
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        const d = new Date(`${s}T00:00:00.000Z`);
+        return Number.isNaN(d.getTime()) ? undefined : d;
+      }
+
+      const d = new Date(s);
+      return Number.isNaN(d.getTime()) ? undefined : d;
+    }
+
+    if (typeof value === 'object' && typeof value.toDate === 'function') {
+      const d = value.toDate();
+      if (d instanceof Date && !Number.isNaN(d.getTime())) return d;
+      return undefined;
+    }
+
+    if (typeof value === 'object' && typeof value._seconds === 'number') {
+      const d = new Date(value._seconds * 1000);
+      return Number.isNaN(d.getTime()) ? undefined : d;
+    }
+
+    return undefined;
+  }
+
+  private dayValueUtc(date: Date): number {
+    return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  }
+
+  private computeTenantStatusFromLease(lease: any): 'CURRENT' | 'INCOMING' | 'PAST' | 'PENDING' {
+    const bookingDate = this.parseAnyDateLike(lease?.bookingDate);
+    const startDate = this.parseAnyDateLike(lease?.startDate);
+    const endDate = this.parseAnyDateLike(lease?.endDate);
+    const today = new Date();
+    const todayValue = this.dayValueUtc(today);
+
+    if (!bookingDate || !startDate) return 'PENDING';
+
+    const bookingValue = this.dayValueUtc(bookingDate);
+    const startValue = this.dayValueUtc(startDate);
+
+    if (todayValue < bookingValue) return 'PENDING';
+    if (todayValue < startValue) return 'INCOMING';
+
+    if (!endDate) return 'CURRENT';
+
+    const endValue = this.dayValueUtc(endDate);
+    if (todayValue <= endValue) return 'CURRENT';
+    return 'PAST';
+  }
+
+  private pickLatestTenantLeaseByBookingDate(leases: any[]): any | undefined {
+    let latest: any | undefined;
+    let latestBookingValue = Number.NEGATIVE_INFINITY;
+
+    for (const lease of leases) {
+      if (lease?.type !== LeaseType.TENANT || !lease?.tenantId) continue;
+
+      const bookingDate = this.parseAnyDateLike(lease.bookingDate);
+      const bookingValue = bookingDate ? this.dayValueUtc(bookingDate) : Number.NEGATIVE_INFINITY;
+      if (bookingValue > latestBookingValue) {
+        latest = lease;
+        latestBookingValue = bookingValue;
+      }
+    }
+
+    return latest;
+  }
+
+  private buildTenantStatusMap(leases: any[]): Map<string, 'CURRENT' | 'INCOMING' | 'PAST' | 'PENDING'> {
+    const latestLeaseByTenantId = new Map<string, any>();
+    const latestBookingValueByTenantId = new Map<string, number>();
+
+    for (const lease of leases) {
+      if (lease?.type !== LeaseType.TENANT || !lease?.tenantId) continue;
+
+      const bookingDate = this.parseAnyDateLike(lease.bookingDate);
+      const bookingValue = bookingDate ? this.dayValueUtc(bookingDate) : Number.NEGATIVE_INFINITY;
+      const currentValue = latestBookingValueByTenantId.get(lease.tenantId) ?? Number.NEGATIVE_INFINITY;
+
+      if (bookingValue > currentValue) {
+        latestBookingValueByTenantId.set(lease.tenantId, bookingValue);
+        latestLeaseByTenantId.set(lease.tenantId, lease);
+      }
+    }
+
+    const statusMap = new Map<string, 'CURRENT' | 'INCOMING' | 'PAST' | 'PENDING'>();
+    for (const [tenantId, lease] of latestLeaseByTenantId.entries()) {
+      statusMap.set(tenantId, this.computeTenantStatusFromLease(lease));
+    }
+
+    return statusMap;
   }
 
   /**
@@ -51,7 +162,7 @@ export class TenantsService {
     const rawData = {
       ...dto,
       holderId,
-      status: dto.status ?? 'CURRENT',
+      status: 'PENDING',
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -65,8 +176,20 @@ export class TenantsService {
 
   async findAll(holderId: string) {
     const col = this.tenantsCollection(holderId);
-    const snap = await col.get();
-    return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+    const [tenantsSnap, leasesSnap] = await Promise.all([
+      col.get(),
+      this.leasesCollection(holderId).get(),
+    ]);
+
+    const statusMap = this.buildTenantStatusMap(leasesSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
+
+    return tenantsSnap.docs.map((d) => {
+      const tenant = { id: d.id, ...(d.data() as any) };
+      return {
+        ...tenant,
+        status: statusMap.get(d.id) ?? 'PENDING',
+      };
+    });
   }
 
   async findOne(holderId: string, tenantId: string) {
@@ -77,7 +200,16 @@ export class TenantsService {
       throw new NotFoundException(`Tenant ${tenantId} not found`);
     }
 
-    return { id: doc.id, ...(doc.data() as any) };
+    const leasesSnap = await this.leasesCollection(holderId).where('tenantId', '==', tenantId).get();
+    const latestLease = this.pickLatestTenantLeaseByBookingDate(
+      leasesSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })),
+    );
+
+    return {
+      id: doc.id,
+      ...(doc.data() as any),
+      status: latestLease ? this.computeTenantStatusFromLease(latestLease) : 'PENDING',
+    };
   }
 
   async update(holderId: string, tenantId: string, dto: UpdateTenantDto) {
@@ -89,8 +221,10 @@ export class TenantsService {
       throw new NotFoundException(`Tenant ${tenantId} not found`);
     }
 
+    const { status: _ignoredStatus, ...restDto } = dto as any;
+
     const rawUpdate = {
-      ...dto,
+      ...restDto,
       updatedAt: new Date(),
     };
 

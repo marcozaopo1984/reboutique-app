@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsEnum,
   IsISO8601,
   IsNumber,
@@ -32,26 +33,30 @@ export enum ExpenseStatus {
 
 export class CreateExpenseDto {
   @IsString()
-  propertyId: string;
+  propertyId!: string;
 
   @IsString()
-  type: string;
+  type!: string;
 
   @IsOptional()
   @IsString()
   description?: string;
 
   @IsNumber()
-  amount: number;
+  amount!: number;
 
   @IsOptional()
   @IsString()
   currency?: string;
 
+  @IsOptional()
+  @IsBoolean()
+  discounted?: boolean;
+
   // Nel frontend usi input type="date" => "YYYY-MM-DD"
   // IsISO8601 accetta anche date-only, quindi ok.
   @IsISO8601()
-  costDate: string;
+  costDate!: string;
 
   @IsOptional()
   @IsString()

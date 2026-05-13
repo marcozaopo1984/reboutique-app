@@ -17,6 +17,25 @@ type Property = {
   baseMonthlyRent?: number;
   monthlyUtilities?: number;
   depositMonths?: number;
+  adminFeePortali?: number;
+
+  balcony?: boolean;
+  dryer?: boolean;
+  bed?: string;
+  ac?: string;
+  heating?: string;
+  roomSizeSqm?: number;
+
+  linkSito?: string;
+  airbnb?: string;
+  spotahome?: string;
+  studentCom?: string;
+  inlife?: string;
+  roomlala?: string;
+  studentville?: string;
+  spacest?: string;
+  housinganywhere?: string;
+  erasmusplay?: string;
 
   isPublished?: boolean;
 
@@ -34,6 +53,25 @@ type CreatePropertyForm = {
   baseMonthlyRent: string;
   monthlyUtilities: string;
   depositMonths: string;
+  adminFeePortali: string;
+
+  balcony: boolean;
+  dryer: boolean;
+  bed: string;
+  ac: string;
+  heating: string;
+  roomSizeSqm: string;
+
+  linkSito: string;
+  airbnb: string;
+  spotahome: string;
+  studentCom: string;
+  inlife: string;
+  roomlala: string;
+  studentville: string;
+  spacest: string;
+  housinganywhere: string;
+  erasmusplay: string;
 
   isPublished: boolean;
 
@@ -55,11 +93,30 @@ const emptyForm = (): CreatePropertyForm => ({
   code: '',
   name: '',
   address: '',
-  type: 'ROOM',
+  type: 'APARTMENT',
 
   baseMonthlyRent: '',
   monthlyUtilities: '',
   depositMonths: '',
+  adminFeePortali: '',
+
+  balcony: false,
+  dryer: false,
+  bed: '',
+  ac: '',
+  heating: '',
+  roomSizeSqm: '',
+
+  linkSito: '',
+  airbnb: '',
+  spotahome: '',
+  studentCom: '',
+  inlife: '',
+  roomlala: '',
+  studentville: '',
+  spacest: '',
+  housinganywhere: '',
+  erasmusplay: '',
 
   isPublished: true,
 
@@ -76,6 +133,25 @@ const propertyToForm = (p: Property): CreatePropertyForm => ({
   baseMonthlyRent: numToString(p.baseMonthlyRent),
   monthlyUtilities: numToString(p.monthlyUtilities),
   depositMonths: numToString(p.depositMonths),
+  adminFeePortali: numToString(p.adminFeePortali),
+
+  balcony: !!p.balcony,
+  dryer: !!p.dryer,
+  bed: p.bed ?? '',
+  ac: p.ac ?? '',
+  heating: p.heating ?? '',
+  roomSizeSqm: numToString(p.roomSizeSqm),
+
+  linkSito: p.linkSito ?? '',
+  airbnb: p.airbnb ?? '',
+  spotahome: p.spotahome ?? '',
+  studentCom: p.studentCom ?? '',
+  inlife: p.inlife ?? '',
+  roomlala: p.roomlala ?? '',
+  studentville: p.studentville ?? '',
+  spacest: p.spacest ?? '',
+  housinganywhere: p.housinganywhere ?? '',
+  erasmusplay: p.erasmusplay ?? '',
 
   isPublished: typeof p.isPublished === 'boolean' ? p.isPublished : true,
 
@@ -93,6 +169,15 @@ export default function PropertiesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const [form, setForm] = useState<CreatePropertyForm>(emptyForm());
+
+  const apartmentProperties = items
+    .filter((p) => p.type === 'APARTMENT' && cleanStr(p.code ?? '') && p.id !== editingId)
+    .sort((a, b) => cleanStr(a.code ?? '').localeCompare(cleanStr(b.code ?? '')));
+
+  const selectedApartmentExists =
+    form.type === 'APARTMENT' ||
+    !cleanStr(form.apartmentId) ||
+    apartmentProperties.some((p) => cleanStr(p.code ?? '') === cleanStr(form.apartmentId));
 
   const onChange = (key: keyof CreatePropertyForm, value: any) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -136,11 +221,25 @@ export default function PropertiesPage() {
       throw new Error('depositMonths non valido');
     }
 
+    const adminFeePortali = toNum(form.adminFeePortali);
+    if (adminFeePortali !== undefined && Number.isNaN(adminFeePortali)) {
+      throw new Error('Admin Fee Portali non valido');
+    }
+
+    const roomSizeSqm = toNum(form.roomSizeSqm);
+    if (roomSizeSqm !== undefined && Number.isNaN(roomSizeSqm)) {
+      throw new Error('Room size non valido');
+    }
+
     if (!cleanStr(form.code)) throw new Error('Codice obbligatorio');
     if (!cleanStr(form.name)) throw new Error('Nome obbligatorio');
 
     if ((form.type === 'ROOM' || form.type === 'BED') && !cleanStr(form.apartmentId)) {
-      throw new Error('Inserisci Apartment ID per ROOM/BED');
+      throw new Error('Seleziona un Apartment ID per ROOM/BED');
+    }
+
+    if ((form.type === 'ROOM' || form.type === 'BED') && !selectedApartmentExists) {
+      throw new Error('Apartment ID non valido: deve corrispondere a una property APARTMENT censita');
     }
 
     return {
@@ -153,6 +252,25 @@ export default function PropertiesPage() {
       baseMonthlyRent,
       monthlyUtilities,
       depositMonths,
+      adminFeePortali,
+
+      balcony: !!form.balcony,
+      dryer: !!form.dryer,
+      bed: cleanStr(form.bed) || undefined,
+      ac: cleanStr(form.ac) || undefined,
+      heating: cleanStr(form.heating) || undefined,
+      roomSizeSqm,
+
+      linkSito: cleanStr(form.linkSito) || undefined,
+      airbnb: cleanStr(form.airbnb) || undefined,
+      spotahome: cleanStr(form.spotahome) || undefined,
+      studentCom: cleanStr(form.studentCom) || undefined,
+      inlife: cleanStr(form.inlife) || undefined,
+      roomlala: cleanStr(form.roomlala) || undefined,
+      studentville: cleanStr(form.studentville) || undefined,
+      spacest: cleanStr(form.spacest) || undefined,
+      housinganywhere: cleanStr(form.housinganywhere) || undefined,
+      erasmusplay: cleanStr(form.erasmusplay) || undefined,
 
       isPublished: !!form.isPublished,
 
@@ -230,8 +348,8 @@ export default function PropertiesPage() {
           <div>
             <h1 className="page-title">Properties</h1>
             <p className="page-subtitle">
-              Gestisci immobili. Per ROOM/BED imposta anche l’<b>Apartment ID</b>{' '}
-              come stringa libera digitata a mano.
+              Gestisci immobili. Censisci prima le property <b>APARTMENT</b>; per ROOM/BED
+              seleziona poi l’<b>Apartment ID</b> tra gli appartamenti già censiti.
             </p>
           </div>
 
@@ -266,7 +384,7 @@ export default function PropertiesPage() {
               <Input
                 value={form.code}
                 onChange={(e: any) => onChange('code', e.target.value)}
-                placeholder="Es. Beatrice-30-R1"
+                placeholder="Es. BdE30"
                 disabled={busy}
               />
             </Field>
@@ -275,7 +393,7 @@ export default function PropertiesPage() {
               <Input
                 value={form.name}
                 onChange={(e: any) => onChange('name', e.target.value)}
-                placeholder="Es. Room 1"
+                placeholder="Es. Beatrice d'Este 30"
                 disabled={busy}
               />
             </Field>
@@ -318,13 +436,32 @@ export default function PropertiesPage() {
             </Field>
 
             {form.type === 'ROOM' || form.type === 'BED' ? (
-              <Field label="Apartment ID" required>
-                <Input
+              <Field label="Apartment ID (codice APARTMENT)" required>
+                <Select
                   value={form.apartmentId}
                   onChange={(e: any) => onChange('apartmentId', e.target.value)}
-                  placeholder="Es. Argentina 4"
-                  disabled={busy}
-                />
+                  disabled={busy || apartmentProperties.length === 0}
+                >
+                  <option value="">Seleziona apartment...</option>
+                  {!selectedApartmentExists && cleanStr(form.apartmentId) ? (
+                    <option value={form.apartmentId}>
+                      {form.apartmentId} (non trovato tra gli APARTMENT censiti)
+                    </option>
+                  ) : null}
+                  {apartmentProperties.map((apt) => {
+                    const code = cleanStr(apt.code ?? '');
+                    return (
+                      <option key={apt.id} value={code}>
+                        {code}{apt.name ? ` – ${apt.name}` : ''}
+                      </option>
+                    );
+                  })}
+                </Select>
+                {apartmentProperties.length === 0 ? (
+                  <p className="text-xs text-amber-700 mt-1">
+                    Prima crea almeno una property di tipo APARTMENT.
+                  </p>
+                ) : null}
               </Field>
             ) : (
               <Field label="Apartment ID">
@@ -360,6 +497,173 @@ export default function PropertiesPage() {
                 value={form.depositMonths}
                 onChange={(e: any) => onChange('depositMonths', e.target.value)}
                 placeholder="2"
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Admin Fee Portali (€)">
+              <Input
+                type="number"
+                value={form.adminFeePortali}
+                onChange={(e: any) => onChange('adminFeePortali', e.target.value)}
+                placeholder="0"
+                disabled={busy}
+              />
+            </Field>
+
+            <div className="md:col-span-2 border-t pt-4 mt-2">
+              <h3 className="text-sm font-semibold text-slate-700">Dotazioni e dettagli stanza</h3>
+            </div>
+
+            <Field label="Balcony">
+              <Select
+                value={form.balcony ? 'yes' : 'no'}
+                onChange={(e: any) => onChange('balcony', e.target.value === 'yes')}
+                disabled={busy}
+              >
+                <option value="no">No</option>
+                <option value="yes">Yes</option>
+              </Select>
+            </Field>
+
+            <Field label="Dryer">
+              <Select
+                value={form.dryer ? 'yes' : 'no'}
+                onChange={(e: any) => onChange('dryer', e.target.value === 'yes')}
+                disabled={busy}
+              >
+                <option value="no">No</option>
+                <option value="yes">Yes</option>
+              </Select>
+            </Field>
+
+            <Field label="Bed">
+              <Input
+                value={form.bed}
+                onChange={(e: any) => onChange('bed', e.target.value)}
+                placeholder="Es. 160cm x 200cm"
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Room size (mq)">
+              <Input
+                type="number"
+                value={form.roomSizeSqm}
+                onChange={(e: any) => onChange('roomSizeSqm', e.target.value)}
+                placeholder="Es. 18"
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="AC">
+              <Input
+                value={form.ac}
+                onChange={(e: any) => onChange('ac', e.target.value)}
+                placeholder="Es. presente / split / portatile"
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Heating">
+              <Input
+                value={form.heating}
+                onChange={(e: any) => onChange('heating', e.target.value)}
+                placeholder="Es. autonomo / centralizzato"
+                disabled={busy}
+              />
+            </Field>
+
+            <div className="md:col-span-2 border-t pt-4 mt-2">
+              <h3 className="text-sm font-semibold text-slate-700">Link e riferimenti piattaforme</h3>
+            </div>
+
+            <Field label="Link Sito">
+              <Input
+                value={form.linkSito}
+                onChange={(e: any) => onChange('linkSito', e.target.value)}
+                placeholder="https://..."
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Airbnb">
+              <Input
+                value={form.airbnb}
+                onChange={(e: any) => onChange('airbnb', e.target.value)}
+                placeholder="https://..."
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Spotahome">
+              <Input
+                value={form.spotahome}
+                onChange={(e: any) => onChange('spotahome', e.target.value)}
+                placeholder="Reference number"
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="student.com">
+              <Input
+                value={form.studentCom}
+                onChange={(e: any) => onChange('studentCom', e.target.value)}
+                placeholder="Reference number"
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Inlife">
+              <Input
+                value={form.inlife}
+                onChange={(e: any) => onChange('inlife', e.target.value)}
+                placeholder="https://..."
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="ROOMLALA">
+              <Input
+                value={form.roomlala}
+                onChange={(e: any) => onChange('roomlala', e.target.value)}
+                placeholder="https://..."
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="STUDENTVILLE">
+              <Input
+                value={form.studentville}
+                onChange={(e: any) => onChange('studentville', e.target.value)}
+                placeholder="https://..."
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="SPACEST">
+              <Input
+                value={form.spacest}
+                onChange={(e: any) => onChange('spacest', e.target.value)}
+                placeholder="https://..."
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="housinganywhere">
+              <Input
+                value={form.housinganywhere}
+                onChange={(e: any) => onChange('housinganywhere', e.target.value)}
+                placeholder="https://..."
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="erasmusplay">
+              <Input
+                value={form.erasmusplay}
+                onChange={(e: any) => onChange('erasmusplay', e.target.value)}
+                placeholder="https://..."
                 disabled={busy}
               />
             </Field>
@@ -413,11 +717,18 @@ export default function PropertiesPage() {
                 const isEditingThis = editingId === p.id;
 
                 const title = `${p.code ?? p.id}${p.name ? ` – ${p.name}` : ''}`;
+                const parentApartment = p.apartmentId
+                  ? items.find(
+                      (apt) =>
+                        apt.type === 'APARTMENT' &&
+                        cleanStr(apt.code ?? '') === cleanStr(p.apartmentId ?? ''),
+                    )
+                  : undefined;
                 const aptText =
                   p.type === 'APARTMENT'
-                    ? 'APARTMENT'
+                    ? 'APARTMENT madre'
                     : p.apartmentId
-                      ? `Apartment ID: ${p.apartmentId}`
+                      ? `Apartment ID: ${p.apartmentId}${parentApartment?.name ? ` – ${parentApartment.name}` : ''}`
                       : 'Apartment ID: (mancante)';
 
                 return (
@@ -446,7 +757,27 @@ export default function PropertiesPage() {
 
                         <div className="text-xs text-slate-500 mt-1">
                           base: {p.baseMonthlyRent ?? '-'} € · utenze: {p.monthlyUtilities ?? '-'} € ·
-                          deposito: {p.depositMonths ?? '-'} mesi
+                          deposito: {p.depositMonths ?? '-'} mesi · admin fee portali: {p.adminFeePortali ?? '-'} €
+                        </div>
+
+                        <div className="text-xs text-slate-500 mt-1">
+                          balcony: {p.balcony ? 'Yes' : 'No'} · dryer: {p.dryer ? 'Yes' : 'No'} ·
+                          bed: {p.bed ?? '-'} · room size: {p.roomSizeSqm ?? '-'} mq
+                        </div>
+
+                        <div className="text-xs text-slate-500 mt-1">
+                          AC: {p.ac ?? '-'} · heating: {p.heating ?? '-'}
+                        </div>
+
+                        <div className="text-xs text-slate-500 mt-1">
+                          Sito: {p.linkSito ?? '-'} · Airbnb: {p.airbnb ?? '-'} ·
+                          Spotahome: {p.spotahome ?? '-'} · student.com: {p.studentCom ?? '-'}
+                        </div>
+
+                        <div className="text-xs text-slate-500 mt-1">
+                          Inlife: {p.inlife ?? '-'} · ROOMLALA: {p.roomlala ?? '-'} ·
+                          STUDENTVILLE: {p.studentville ?? '-'} · SPACEST: {p.spacest ?? '-'} ·
+                          housinganywhere: {p.housinganywhere ?? '-'} · erasmusplay: {p.erasmusplay ?? '-'}
                         </div>
 
                         <div className="text-[11px] text-slate-400 mt-1">id: {p.id}</div>

@@ -1,4 +1,4 @@
-import { IsISO8601, IsNumber, IsOptional, IsString, IsIn } from 'class-validator';
+import { IsBoolean, IsISO8601, IsNumber, IsOptional, IsString, IsIn } from 'class-validator';
 
 export const PAYMENT_KINDS = [
   'RENT',
@@ -51,6 +51,10 @@ export class CreatePaymentDto {
   @IsOptional()
   @IsString()
   currency?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  discounted?: boolean;
 
   @IsIn(PAYMENT_KINDS)
   kind!: PaymentKind;

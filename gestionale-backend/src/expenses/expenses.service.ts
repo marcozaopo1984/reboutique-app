@@ -53,6 +53,9 @@ export class ExpensesService {
     const paidFields = this.normalizePaidFields(dto.status, dto.paidDate);
     const data = this.clean({
       ...dto,
+      type: dto.type?.trim(),
+      description: dto.description?.trim(),
+      notes: dto.notes?.trim(),
       status: paidFields.status,
       currency: dto.currency ?? 'EUR',
       createdAt: new Date(),
@@ -86,6 +89,9 @@ export class ExpensesService {
 
     const data = this.clean({
       ...dto,
+      type: dto.type?.trim(),
+      description: dto.description?.trim(),
+      notes: dto.notes?.trim(),
       status: paidFields.status,
       paidDate: paidFields.paidDate,
       updatedAt: new Date(),

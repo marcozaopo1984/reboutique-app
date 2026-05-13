@@ -1,4 +1,4 @@
-import { IsEnum, IsISO8601, IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsEnum, IsISO8601, IsNumber, IsOptional, IsString } from 'class-validator';
 
 export enum LeaseType {
   TENANT = 'TENANT',
@@ -42,6 +42,10 @@ export class CreateLeaseDto {
   monthlyRentWithoutBills!: number;
 
   @IsOptional()
+  @IsBoolean()
+  monthlyRentDiscounted?: boolean;
+
+  @IsOptional()
   @IsNumber()
   monthlyRentWithBills?: number;
 
@@ -54,12 +58,20 @@ export class CreateLeaseDto {
   depositAmount?: number;
 
   @IsOptional()
+  @IsBoolean()
+  depositDiscounted?: boolean;
+
+  @IsOptional()
   @IsISO8601()
   depositDate?: string;
 
   @IsOptional()
   @IsNumber()
   adminFeeAmount?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  adminFeeDiscounted?: boolean;
 
   @IsOptional()
   @IsISO8601()

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchWithAuth } from '@/lib/apiClient';
 import EntityDocuments from '@/components/EntityDocuments';
-import { Field, Input, Select } from '@/components/form/Field';
+import { Field, Input, Select, Textarea } from '@/components/form/Field';
 
 type Landlord = {
   id: string;
@@ -20,6 +20,8 @@ type Landlord = {
   notes?: string;
 
   status?: 'ACTIVE' | 'INACTIVE';
+
+  apartmentIds?: string[];
 };
 
 type CreateLandlordForm = {
@@ -35,9 +37,24 @@ type CreateLandlordForm = {
   notes: string;
 
   status: 'ACTIVE' | 'INACTIVE';
+
+  apartmentIdsText: string;
 };
 
 const cleanStr = (s: string) => s.trim();
+
+const parseApartmentIds = (value: string): string[] =>
+  Array.from(
+    new Set(
+      value
+        .split(/[\n,;]+/)
+        .map(cleanStr)
+        .filter(Boolean),
+    ),
+  );
+
+const apartmentIdsToText = (value?: string[]) =>
+  Array.isArray(value) ? value.join('\n') : '';
 
 const emptyForm = (): CreateLandlordForm => ({
   name: '',
@@ -48,6 +65,7 @@ const emptyForm = (): CreateLandlordForm => ({
   address: '',
   notes: '',
   status: 'ACTIVE',
+  apartmentIdsText: '',
 });
 
 const landlordToForm = (l: Landlord): CreateLandlordForm => ({
@@ -59,6 +77,7 @@ const landlordToForm = (l: Landlord): CreateLandlordForm => ({
   address: l.address ?? '',
   notes: l.notes ?? '',
   status: l.status ?? 'ACTIVE',
+  apartmentIdsText: apartmentIdsToText(l.apartmentIds),
 });
 
 export default function LandlordsPage() {
@@ -107,6 +126,8 @@ export default function LandlordsPage() {
       throw new Error('Nome obbligatorio');
     }
 
+    const apartmentIds = parseApartmentIds(form.apartmentIdsText);
+
     return {
       name: cleanStr(form.name),
 
@@ -120,6 +141,7 @@ export default function LandlordsPage() {
       notes: cleanStr(form.notes) || undefined,
 
       status: form.status || 'ACTIVE',
+      apartmentIds,
     };
   };
 
@@ -283,6 +305,19 @@ export default function LandlordsPage() {
               />
             </Field>
 
+            <Field label="Apartment ID associati" className="md:col-span-3">
+              <Textarea
+                value={form.apartmentIdsText}
+                onChange={(e: any) => onChange('apartmentIdsText', e.target.value)}
+                disabled={busy}
+                rows={3}
+                placeholder={"Uno per riga, oppure separati da virgola. Es.\nARGENTINA-4\nVITTORIA-12"}
+              />
+              <div className="text-[11px] text-slate-500 mt-1">
+                Inserisci solo Apartment ID di property di tipo APARTMENT. I duplicati vengono rimossi automaticamente.
+              </div>
+            </Field>
+
             <Field label="Note" className="md:col-span-3">
               <Input
                 value={form.notes}
@@ -352,6 +387,13 @@ export default function LandlordsPage() {
                         </div>
 
                         {l.address && <div className="text-xs text-slate-500 mt-1">addr: {l.address}</div>}
+
+                        {Array.isArray(l.apartmentIds) && l.apartmentIds.length > 0 && (
+                          <div className="text-xs text-slate-500 mt-1">
+                            apartments: {l.apartmentIds.join(', ')}
+                          </div>
+                        )}
+
                         {l.notes && <div className="text-xs text-slate-500 mt-1">note: {l.notes}</div>}
 
                         <div className="text-[11px] text-slate-400 mt-1">id: {l.id}</div>

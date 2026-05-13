@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { FirebaseService } from '../firebase/firebase.service';
 import { CreatePropertyDto } from './dto/create-property.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
@@ -30,6 +30,80 @@ export class PropertiesService {
     return cleaned;
   }
 
+  private normalizeString(value: unknown): string | undefined {
+    if (typeof value !== 'string') return undefined;
+    const trimmed = value.trim();
+    return trimmed === '' ? undefined : trimmed;
+  }
+
+  private isApartmentType(type: unknown): boolean {
+    return type === 'APARTMENT';
+  }
+
+  private isChildPropertyType(type: unknown): boolean {
+    return type === 'ROOM' || type === 'BED';
+  }
+
+  private async apartmentCodeExists(
+    holderId: string,
+    apartmentCode: string,
+    excludePropertyId?: string,
+  ): Promise<boolean> {
+    const snap = await this.collection(holderId)
+      .where('code', '==', apartmentCode)
+      .limit(10)
+      .get();
+
+    return snap.docs.some((doc) => {
+      if (excludePropertyId && doc.id === excludePropertyId) return false;
+      const data = doc.data() as any;
+      return data?.type === 'APARTMENT' && data?.code === apartmentCode;
+    });
+  }
+
+  private async validateAndNormalizeApartmentLink(
+    holderId: string,
+    data: Record<string, any>,
+    excludePropertyId?: string,
+  ) {
+    const type = data.type;
+
+    data.code = this.normalizeString(data.code);
+    data.name = this.normalizeString(data.name);
+    data.address = this.normalizeString(data.address);
+    data.apartmentId = this.normalizeString(data.apartmentId);
+    data.apartmentLabel = this.normalizeString(data.apartmentLabel);
+    data.apartmentKey = this.normalizeString(data.apartmentKey);
+    data.buildingId = this.normalizeString(data.buildingId);
+
+    if (!data.code) {
+      throw new BadRequestException('Property code is required');
+    }
+
+    if (!data.name) {
+      throw new BadRequestException('Property name is required');
+    }
+
+    if (this.isApartmentType(type)) {
+      // Le property APARTMENT sono le madri: non devono puntare a un altro apartmentId.
+      delete data.apartmentId;
+      return;
+    }
+
+    if (this.isChildPropertyType(type)) {
+      if (!data.apartmentId) {
+        throw new BadRequestException('Apartment ID is required for ROOM/BED properties');
+      }
+
+      const exists = await this.apartmentCodeExists(holderId, data.apartmentId, excludePropertyId);
+      if (!exists) {
+        throw new BadRequestException(
+          `Apartment ID "${data.apartmentId}" must match the code of an existing APARTMENT property`,
+        );
+      }
+    }
+  }
+
   // -------------------------
   // CRUD
   // -------------------------
@@ -43,6 +117,8 @@ export class PropertiesService {
       createdAt: new Date(),
       updatedAt: new Date(),
     };
+
+    await this.validateAndNormalizeApartmentLink(holderId, rawData as any);
 
     const data = this.cleanData(rawData as any);
 
@@ -77,10 +153,33 @@ export class PropertiesService {
       throw new NotFoundException(`Property ${propertyId} not found`);
     }
 
+    const existing = doc.data() as any;
+    const mergedForValidation = {
+      ...existing,
+      ...dto,
+    };
+
+    await this.validateAndNormalizeApartmentLink(
+      holderId,
+      mergedForValidation as any,
+      propertyId,
+    );
+
     const rawUpdate = {
       ...dto,
+      code: mergedForValidation.code,
+      name: mergedForValidation.name,
+      address: mergedForValidation.address,
+      apartmentId: mergedForValidation.apartmentId,
+      apartmentLabel: mergedForValidation.apartmentLabel,
+      apartmentKey: mergedForValidation.apartmentKey,
+      buildingId: mergedForValidation.buildingId,
       updatedAt: new Date(),
     };
+
+    if (mergedForValidation.type === 'APARTMENT') {
+      rawUpdate.apartmentId = admin.firestore.FieldValue.delete();
+    }
 
     const updateData = this.cleanData(rawUpdate as any);
 

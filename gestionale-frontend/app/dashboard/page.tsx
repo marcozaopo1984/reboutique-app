@@ -39,6 +39,11 @@ const cards = [
     description: 'Riepilogo costi e ricavi per appartamento con margine mensile e punto di pareggio.',
   },
   {
+    href: '/prezzi-e-disponibilita',
+    title: 'Prezzi e disponibilità',
+    description: 'Vista listino e disponibilità con filtri date, depositi, admin fee e dati portali per property.',
+  },
+  {
     href: '/report-investitori',
     title: 'Report Investitori',
     description: 'Report IN / OUT in modalità Cassa o Competenza e redditività per appartamento.',

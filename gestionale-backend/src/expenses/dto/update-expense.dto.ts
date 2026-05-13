@@ -1,4 +1,11 @@
-import { IsEnum, IsISO8601, IsNumber, IsOptional, IsString } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsISO8601,
+  IsNumber,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 import {
   ExpenseAllocationMode,
   ExpenseFrequency,
@@ -26,6 +33,10 @@ export class UpdateExpenseDto {
   @IsOptional()
   @IsString()
   currency?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  discounted?: boolean;
 
   @IsOptional()
   @IsISO8601()
