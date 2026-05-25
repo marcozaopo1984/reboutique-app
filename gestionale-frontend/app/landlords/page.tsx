@@ -90,6 +90,8 @@ export default function LandlordsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const [form, setForm] = useState<CreateLandlordForm>(emptyForm());
+  const [activeTab, setActiveTab] = useState<'list' | 'create'>('list');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const onChange = (key: keyof CreateLandlordForm, value: any) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -98,6 +100,33 @@ export default function LandlordsPage() {
   const label = useMemo(() => {
     return (l: Landlord) => (l.name?.trim() ? l.name.trim() : l.id);
   }, []);
+
+  const filteredItems = useMemo(() => {
+    const q = cleanStr(searchQuery).toLowerCase();
+    if (!q) return items;
+
+    return items.filter((l) =>
+      [
+        l.id,
+        l.name,
+        l.email,
+        l.phone,
+        l.taxCode,
+        l.vatNumber,
+        l.address,
+        l.status,
+        l.notes,
+        ...(l.apartmentIds ?? []),
+      ].some((value) => String(value ?? '').toLowerCase().includes(q)),
+    );
+  }, [items, searchQuery]);
+
+  const tabClass = (tab: 'list' | 'create') =>
+    `rounded-lg px-4 py-2 text-sm font-semibold transition ${
+      activeTab === tab
+        ? 'bg-slate-900 text-white shadow-sm'
+        : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+    }`;
 
   const loadAll = async () => {
     setLoading(true);
@@ -174,6 +203,7 @@ export default function LandlordsPage() {
 
       resetForm();
       await loadAll();
+      setActiveTab('list');
     } catch (e: any) {
       setError(
         e?.message ??
@@ -188,6 +218,7 @@ export default function LandlordsPage() {
     setError(null);
     setEditingId(l.id);
     setForm(landlordToForm(l));
+    setActiveTab('create');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -230,6 +261,23 @@ export default function LandlordsPage() {
           </div>
         )}
 
+        <div className="surface-card p-2 flex flex-wrap gap-2">
+          <button type="button" onClick={() => setActiveTab('list')} className={tabClass('list')}>
+            Lista Landlords
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              resetForm();
+              setActiveTab('create');
+            }}
+            className={tabClass('create')}
+          >
+            Create Landlord
+          </button>
+        </div>
+
+        {activeTab === 'create' && (
         <div className="surface-card p-5 space-y-4">
           <div className="flex items-center justify-between gap-3">
             <h2 className="font-medium">
@@ -347,6 +395,20 @@ export default function LandlordsPage() {
             </button>
           </div>
         </div>
+        )}
+
+        {activeTab === 'list' && (
+          <>
+            <div className="surface-card p-5 space-y-3">
+              <Field label="Ricerca">
+                <Input
+                  value={searchQuery}
+                  onChange={(e: any) => setSearchQuery(e.target.value)}
+                  placeholder="Cerca per nome, email, telefono, codice fiscale, apartment ID..."
+                  disabled={busy}
+                />
+              </Field>
+            </div>
 
         <div className="surface-card p-5">
           <h2 className="font-medium mb-3">Elenco</h2>
@@ -355,9 +417,11 @@ export default function LandlordsPage() {
             <div>Caricamento...</div>
           ) : items.length === 0 ? (
             <div className="text-sm text-slate-500">Nessun landlord.</div>
+          ) : filteredItems.length === 0 ? (
+            <div className="text-sm text-slate-500">Nessun landlord corrisponde alla ricerca.</div>
           ) : (
             <div className="space-y-2">
-              {items.map((l) => {
+              {filteredItems.map((l) => {
                 const docsOpen = openDocsId === l.id;
                 const isEditingThis = editingId === l.id;
 
@@ -441,6 +505,8 @@ export default function LandlordsPage() {
             </div>
           )}
         </div>
+          </>
+        )}
       </div>
     </div>
   );

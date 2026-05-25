@@ -220,6 +220,8 @@ export default function LeasesPage() {
   const [editingLeaseId, setEditingLeaseId] = useState<string | null>(null);
 
   const [form, setForm] = useState<CreateLeaseForm>(emptyForm());
+  const [activeTab, setActiveTab] = useState<'list' | 'create'>('list');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const onChange = <K extends keyof CreateLeaseForm>(key: K, value: CreateLeaseForm[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -257,6 +259,40 @@ export default function LeasesPage() {
     () => properties.filter((p) => p.type === 'APARTMENT'),
     [properties],
   );
+
+  const filteredItems = useMemo(() => {
+    const q = cleanStr(searchQuery).toLowerCase();
+    if (!q) return items;
+
+    return items.filter((x) =>
+      [
+        x.id,
+        x.type,
+        x.propertyId,
+        propertyLabel.get(x.propertyId),
+        x.tenantId,
+        x.tenantId ? tenantLabel.get(x.tenantId) : '',
+        x.landlordId,
+        x.landlordId ? landlordLabel.get(x.landlordId) : '',
+        toYmd(x.bookingDate),
+        toYmd(x.startDate),
+        toYmd(x.endDate),
+        x.monthlyRentWithoutBills,
+        x.monthlyRentWithBills,
+        x.billsIncludedAmount,
+        x.depositAmount,
+        x.adminFeeAmount,
+        x.registrationTaxAmount,
+      ].some((value) => String(value ?? '').toLowerCase().includes(q)),
+    );
+  }, [items, landlordLabel, propertyLabel, searchQuery, tenantLabel]);
+
+  const tabClass = (tab: 'list' | 'create') =>
+    `rounded-lg px-4 py-2 text-sm font-semibold transition ${
+      activeTab === tab
+        ? 'bg-slate-900 text-white shadow-sm'
+        : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+    }`;
 
   const loadAll = async () => {
     setLoading(true);
@@ -364,6 +400,7 @@ export default function LeasesPage() {
 
       resetForm();
       await loadAll();
+      setActiveTab('list');
     } catch (e: any) {
       setError(e?.message ?? (editingLeaseId ? 'Errore aggiornamento lease' : 'Errore creazione lease'));
     } finally {
@@ -375,6 +412,7 @@ export default function LeasesPage() {
     setError(null);
     setEditingLeaseId(lease.id);
     setForm(leaseToForm(lease));
+    setActiveTab('create');
 
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -438,6 +476,23 @@ export default function LeasesPage() {
           </div>
         )}
 
+        <div className="surface-card p-2 flex flex-wrap gap-2">
+          <button type="button" onClick={() => setActiveTab('list')} className={tabClass('list')}>
+            Lista Leases
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              resetForm();
+              setActiveTab('create');
+            }}
+            className={tabClass('create')}
+          >
+            Create Lease
+          </button>
+        </div>
+
+        {activeTab === 'create' && (
         <div className="surface-card p-5 space-y-4">
           <div className="flex items-center justify-between gap-3">
             <h2 className="font-medium">
@@ -759,6 +814,20 @@ export default function LeasesPage() {
             </button>
           </div>
         </div>
+        )}
+
+        {activeTab === 'list' && (
+          <>
+            <div className="surface-card p-5 space-y-3">
+              <Field label="Ricerca">
+                <Input
+                  value={searchQuery}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
+                  placeholder="Cerca per property, tenant, landlord, date, importi, id..."
+                  disabled={busy}
+                />
+              </Field>
+            </div>
 
         <div className="surface-card p-5">
           <h2 className="font-medium mb-3">Elenco</h2>
@@ -767,9 +836,11 @@ export default function LeasesPage() {
             <div>Caricamento...</div>
           ) : items.length === 0 ? (
             <div className="text-sm text-slate-500">Nessun contratto.</div>
+          ) : filteredItems.length === 0 ? (
+            <div className="text-sm text-slate-500">Nessun contratto corrisponde alla ricerca.</div>
           ) : (
             <div className="space-y-2">
-              {items.map((x) => {
+              {filteredItems.map((x) => {
                 const docsOpen = openDocsLeaseId === x.id;
                 const isEditingThis = editingLeaseId === x.id;
 
@@ -886,6 +957,8 @@ export default function LeasesPage() {
             </div>
           )}
         </div>
+          </>
+        )}
       </div>
     </div>
   );

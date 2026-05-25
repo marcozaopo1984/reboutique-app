@@ -141,6 +141,8 @@ export default function TenantsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const [form, setForm] = useState<CreateTenantForm>(emptyForm());
+  const [activeTab, setActiveTab] = useState<'list' | 'create'>('list');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const onChange = (key: keyof CreateTenantForm, value: any) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -149,6 +151,38 @@ export default function TenantsPage() {
   const fullName = useMemo(() => {
     return (t: Tenant) => `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim() || t.id;
   }, []);
+
+  const filteredItems = useMemo(() => {
+    const q = cleanStr(searchQuery).toLowerCase();
+    if (!q) return items;
+
+    return items.filter((t) =>
+      [
+        t.id,
+        t.firstName,
+        t.lastName,
+        t.email,
+        t.phone,
+        t.birthday,
+        t.nationality,
+        t.gender,
+        t.address,
+        t.taxCode,
+        t.documentType,
+        t.documentNumber,
+        t.school,
+        t.status,
+        t.notes,
+      ].some((value) => String(value ?? '').toLowerCase().includes(q)),
+    );
+  }, [items, searchQuery]);
+
+  const tabClass = (tab: 'list' | 'create') =>
+    `rounded-lg px-4 py-2 text-sm font-semibold transition ${
+      activeTab === tab
+        ? 'bg-slate-900 text-white shadow-sm'
+        : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+    }`;
 
   const loadAll = async () => {
     setLoading(true);
@@ -228,6 +262,7 @@ export default function TenantsPage() {
 
       resetForm();
       await loadAll();
+      setActiveTab('list');
     } catch (e: any) {
       setError(e?.message ?? (editingId ? 'Errore aggiornamento tenant' : 'Errore creazione tenant'));
     } finally {
@@ -239,6 +274,7 @@ export default function TenantsPage() {
     setError(null);
     setEditingId(tenant.id);
     setForm(tenantToForm(tenant));
+    setActiveTab('create');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -283,6 +319,23 @@ export default function TenantsPage() {
           </div>
         )}
 
+        <div className="surface-card p-2 flex flex-wrap gap-2">
+          <button type="button" onClick={() => setActiveTab('list')} className={tabClass('list')}>
+            Lista Tenants
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              resetForm();
+              setActiveTab('create');
+            }}
+            className={tabClass('create')}
+          >
+            Create Tenant
+          </button>
+        </div>
+
+        {activeTab === 'create' && (
         <div className="surface-card p-5 space-y-4">
           <div className="flex items-center justify-between gap-3">
             <h2 className="font-medium">
@@ -460,6 +513,20 @@ export default function TenantsPage() {
             </button>
           </div>
         </div>
+        )}
+
+        {activeTab === 'list' && (
+          <>
+            <div className="surface-card p-5 space-y-3">
+              <Field label="Ricerca">
+                <Input
+                  value={searchQuery}
+                  onChange={(e: any) => setSearchQuery(e.target.value)}
+                  placeholder="Cerca per nome, email, telefono, codice fiscale, scuola, status..."
+                  disabled={busy}
+                />
+              </Field>
+            </div>
 
         <div className="surface-card p-5">
           <h2 className="font-medium mb-3">Elenco</h2>
@@ -468,9 +535,11 @@ export default function TenantsPage() {
             <div>Caricamento...</div>
           ) : items.length === 0 ? (
             <div className="text-sm text-slate-500">Nessun tenant.</div>
+          ) : filteredItems.length === 0 ? (
+            <div className="text-sm text-slate-500">Nessun tenant corrisponde alla ricerca.</div>
           ) : (
             <div className="space-y-2">
-              {items.map((t) => {
+              {filteredItems.map((t) => {
                 const docsOpen = openDocsId === t.id;
                 const isEditingThis = editingId === t.id;
 
@@ -557,6 +626,8 @@ export default function TenantsPage() {
             </div>
           )}
         </div>
+          </>
+        )}
       </div>
     </div>
   );
