@@ -23,6 +23,7 @@ type Property = {
   roomSizeSqm?: number;
   linkSito?: string;
   airbnb?: string;
+  airbnbPrice?: number;
   spotahome?: string;
   studentCom?: string;
   inlife?: string;
@@ -449,7 +450,7 @@ export default function PrezziDisponibilitaPage() {
         {!loading && !error ? (
           <div className="surface-card p-0 overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="min-w-[2800px] w-full text-sm">
+              <table className="min-w-[2900px] w-full text-sm">
                 <thead className="bg-slate-100 text-slate-700">
                   <tr>
                     <th className="text-left px-3 py-3">Code</th>
@@ -477,6 +478,7 @@ export default function PrezziDisponibilitaPage() {
                     <th className="text-right px-3 py-3">Room size</th>
                     <th className="text-left px-3 py-3">Link Sito</th>
                     <th className="text-left px-3 py-3">Airbnb</th>
+                    <th className="text-right px-3 py-3">Prezzo Airbnb</th>
                     <th className="text-left px-3 py-3">Spotahome</th>
                     <th className="text-left px-3 py-3">student.com</th>
                     <th className="text-left px-3 py-3">Inlife</th>
@@ -515,6 +517,7 @@ export default function PrezziDisponibilitaPage() {
                       <td className="px-3 py-3 text-right">{fmtMoney(row.property.roomSizeSqm ?? null)}</td>
                       <td className="px-3 py-3"><LinkCell value={row.property.linkSito} /></td>
                       <td className="px-3 py-3"><LinkCell value={row.property.airbnb} /></td>
+                      <td className="px-3 py-3 text-right">{fmtMoney(row.property.airbnbPrice ?? null)}</td>
                       <td className="px-3 py-3">{row.property.spotahome ?? ''}</td>
                       <td className="px-3 py-3">{row.property.studentCom ?? ''}</td>
                       <td className="px-3 py-3"><LinkCell value={row.property.inlife} /></td>

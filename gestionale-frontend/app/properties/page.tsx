@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { fetchWithAuth } from '@/lib/apiClient';
 import EntityDocuments from '@/components/EntityDocuments';
 import { Field, Input, Select } from '@/components/form/Field';
@@ -18,6 +18,7 @@ type Property = {
   monthlyUtilities?: number;
   depositMonths?: number;
   adminFeePortali?: number;
+  airbnbPrice?: number;
 
   balcony?: boolean;
   dryer?: boolean;
@@ -54,6 +55,7 @@ type CreatePropertyForm = {
   monthlyUtilities: string;
   depositMonths: string;
   adminFeePortali: string;
+  airbnbPrice: string;
 
   balcony: boolean;
   dryer: boolean;
@@ -99,6 +101,7 @@ const emptyForm = (): CreatePropertyForm => ({
   monthlyUtilities: '',
   depositMonths: '',
   adminFeePortali: '',
+  airbnbPrice: '',
 
   balcony: false,
   dryer: false,
@@ -134,6 +137,7 @@ const propertyToForm = (p: Property): CreatePropertyForm => ({
   monthlyUtilities: numToString(p.monthlyUtilities),
   depositMonths: numToString(p.depositMonths),
   adminFeePortali: numToString(p.adminFeePortali),
+  airbnbPrice: numToString(p.airbnbPrice),
 
   balcony: !!p.balcony,
   dryer: !!p.dryer,
@@ -169,8 +173,6 @@ export default function PropertiesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const [form, setForm] = useState<CreatePropertyForm>(emptyForm());
-  const [activeTab, setActiveTab] = useState<'list' | 'create'>('list');
-  const [searchQuery, setSearchQuery] = useState('');
 
   const apartmentProperties = items
     .filter((p) => p.type === 'APARTMENT' && cleanStr(p.code ?? '') && p.id !== editingId)
@@ -180,48 +182,6 @@ export default function PropertiesPage() {
     form.type === 'APARTMENT' ||
     !cleanStr(form.apartmentId) ||
     apartmentProperties.some((p) => cleanStr(p.code ?? '') === cleanStr(form.apartmentId));
-
-  const filteredItems = useMemo(() => {
-    const q = cleanStr(searchQuery).toLowerCase();
-    if (!q) return items;
-
-    return items.filter((p) =>
-      [
-        p.id,
-        p.code,
-        p.name,
-        p.address,
-        p.type,
-        p.apartmentId,
-        p.buildingId,
-        p.baseMonthlyRent,
-        p.monthlyUtilities,
-        p.depositMonths,
-        p.adminFeePortali,
-        p.bed,
-        p.ac,
-        p.heating,
-        p.roomSizeSqm,
-        p.linkSito,
-        p.airbnb,
-        p.spotahome,
-        p.studentCom,
-        p.inlife,
-        p.roomlala,
-        p.studentville,
-        p.spacest,
-        p.housinganywhere,
-        p.erasmusplay,
-      ].some((value) => String(value ?? '').toLowerCase().includes(q)),
-    );
-  }, [items, searchQuery]);
-
-  const tabClass = (tab: 'list' | 'create') =>
-    `rounded-lg px-4 py-2 text-sm font-semibold transition ${
-      activeTab === tab
-        ? 'bg-slate-900 text-white shadow-sm'
-        : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-    }`;
 
   const onChange = (key: keyof CreatePropertyForm, value: any) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -270,6 +230,11 @@ export default function PropertiesPage() {
       throw new Error('Admin Fee Portali non valido');
     }
 
+    const airbnbPrice = toNum(form.airbnbPrice);
+    if (airbnbPrice !== undefined && Number.isNaN(airbnbPrice)) {
+      throw new Error('Prezzo Airbnb non valido');
+    }
+
     const roomSizeSqm = toNum(form.roomSizeSqm);
     if (roomSizeSqm !== undefined && Number.isNaN(roomSizeSqm)) {
       throw new Error('Room size non valido');
@@ -297,6 +262,7 @@ export default function PropertiesPage() {
       monthlyUtilities,
       depositMonths,
       adminFeePortali,
+      airbnbPrice,
 
       balcony: !!form.balcony,
       dryer: !!form.dryer,
@@ -353,7 +319,6 @@ export default function PropertiesPage() {
 
       resetForm();
       await loadAll();
-      setActiveTab('list');
     } catch (e: any) {
       setError(
         e?.message ??
@@ -368,7 +333,6 @@ export default function PropertiesPage() {
     setError(null);
     setEditingId(p.id);
     setForm(propertyToForm(p));
-    setActiveTab('create');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -414,23 +378,6 @@ export default function PropertiesPage() {
           </div>
         )}
 
-        <div className="surface-card p-2 flex flex-wrap gap-2">
-          <button type="button" onClick={() => setActiveTab('list')} className={tabClass('list')}>
-            Lista Properties
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              resetForm();
-              setActiveTab('create');
-            }}
-            className={tabClass('create')}
-          >
-            Create Property
-          </button>
-        </div>
-
-        {activeTab === 'create' && (
         <div className="surface-card p-5 space-y-4">
           <div className="flex items-center justify-between gap-3">
             <h2 className="font-medium">
@@ -659,6 +606,16 @@ export default function PropertiesPage() {
               />
             </Field>
 
+            <Field label="Prezzo Airbnb (€)">
+              <Input
+                type="number"
+                value={form.airbnbPrice}
+                onChange={(e: any) => onChange('airbnbPrice', e.target.value)}
+                placeholder="0"
+                disabled={busy}
+              />
+            </Field>
+
             <Field label="Spotahome">
               <Input
                 value={form.spotahome}
@@ -765,20 +722,6 @@ export default function PropertiesPage() {
             </button>
           </div>
         </div>
-        )}
-
-        {activeTab === 'list' && (
-          <>
-            <div className="surface-card p-5 space-y-3">
-              <Field label="Ricerca">
-                <Input
-                  value={searchQuery}
-                  onChange={(e: any) => setSearchQuery(e.target.value)}
-                  placeholder="Cerca per codice, nome, type, apartment ID, address, portali..."
-                  disabled={busy}
-                />
-              </Field>
-            </div>
 
         <div className="surface-card p-5">
           <h2 className="font-medium mb-3">Elenco</h2>
@@ -787,11 +730,9 @@ export default function PropertiesPage() {
             <div>Caricamento...</div>
           ) : items.length === 0 ? (
             <div className="text-sm text-slate-500">Nessuna property.</div>
-          ) : filteredItems.length === 0 ? (
-            <div className="text-sm text-slate-500">Nessuna property corrisponde alla ricerca.</div>
           ) : (
             <div className="space-y-2">
-              {filteredItems.map((p) => {
+              {items.map((p) => {
                 const docsOpen = openDocsPropertyId === p.id;
                 const isEditingThis = editingId === p.id;
 
@@ -850,7 +791,8 @@ export default function PropertiesPage() {
 
                         <div className="text-xs text-slate-500 mt-1">
                           Sito: {p.linkSito ?? '-'} · Airbnb: {p.airbnb ?? '-'} ·
-                          Spotahome: {p.spotahome ?? '-'} · student.com: {p.studentCom ?? '-'}
+                          prezzo Airbnb: {p.airbnbPrice ?? '-'} € · Spotahome: {p.spotahome ?? '-'} ·
+                          student.com: {p.studentCom ?? '-'}
                         </div>
 
                         <div className="text-xs text-slate-500 mt-1">
@@ -906,8 +848,6 @@ export default function PropertiesPage() {
             </div>
           )}
         </div>
-          </>
-        )}
       </div>
     </div>
   );

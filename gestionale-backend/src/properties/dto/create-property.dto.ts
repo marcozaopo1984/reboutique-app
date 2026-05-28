@@ -113,6 +113,13 @@ export class CreatePropertyDto {
   airbnb?: string;
 
   /**
+   * Prezzo Airbnb associato alla property.
+   */
+  @IsOptional()
+  @IsNumber()
+  airbnbPrice?: number;
+
+  /**
    * Reference alfanumerico della piattaforma Spotahome.
    */
   @IsOptional()
