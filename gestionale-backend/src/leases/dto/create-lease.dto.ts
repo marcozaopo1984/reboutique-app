@@ -39,7 +39,7 @@ export class CreateLeaseDto {
   externalId?: string;
 
   @IsNumber()
-  monthlyRentWithoutBills!: number;
+  monthlyRentWithBills!: number;
 
   @IsOptional()
   @IsBoolean()
@@ -47,7 +47,7 @@ export class CreateLeaseDto {
 
   @IsOptional()
   @IsNumber()
-  monthlyRentWithBills?: number;
+  monthlyRentWithoutBills?: number;
 
   @IsOptional()
   @IsNumber()
@@ -64,6 +64,14 @@ export class CreateLeaseDto {
   @IsOptional()
   @IsISO8601()
   depositDate?: string;
+
+  @IsOptional()
+  @IsNumber()
+  depositDays?: number;
+
+  @IsOptional()
+  @IsISO8601()
+  depositReturnDate?: string;
 
   @IsOptional()
   @IsNumber()

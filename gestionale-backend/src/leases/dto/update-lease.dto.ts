@@ -40,7 +40,7 @@ export class UpdateLeaseDto {
 
   @IsOptional()
   @IsNumber()
-  monthlyRentWithoutBills?: number;
+  monthlyRentWithBills?: number;
 
   @IsOptional()
   @IsBoolean()
@@ -48,7 +48,7 @@ export class UpdateLeaseDto {
 
   @IsOptional()
   @IsNumber()
-  monthlyRentWithBills?: number;
+  monthlyRentWithoutBills?: number;
 
   @IsOptional()
   @IsNumber()
@@ -66,6 +66,14 @@ export class UpdateLeaseDto {
   @IsOptional()
   @IsISO8601()
   depositDate?: string;
+
+  @IsOptional()
+  @IsNumber()
+  depositDays?: number;
+
+  @IsOptional()
+  @IsISO8601()
+  depositReturnDate?: string;
 
   @IsOptional()
   @IsNumber()

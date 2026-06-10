@@ -25,9 +25,9 @@ type Lease = {
   endDate: any;
   nextPaymentDue?: any;
 
-  monthlyRentWithoutBills: number;
+  monthlyRentWithBills: number;
   monthlyRentDiscounted?: boolean;
-  monthlyRentWithBills?: number;
+  monthlyRentWithoutBills?: number;
   billsIncludedAmount?: number;
 
   dueDayOfMonth?: number;
@@ -35,6 +35,8 @@ type Lease = {
   depositAmount?: number;
   depositDiscounted?: boolean;
   depositDate?: any;
+  depositDays?: number;
+  depositReturnDate?: any;
   adminFeeAmount?: number;
   adminFeeDiscounted?: boolean;
   adminFeeDate?: any;
@@ -58,9 +60,9 @@ type CreateLeaseForm = {
   endDate: string;
   nextPaymentDue: string;
 
-  monthlyRentWithoutBills: string;
-  monthlyRentDiscounted: boolean;
   monthlyRentWithBills: string;
+  monthlyRentDiscounted: boolean;
+  monthlyRentWithoutBills: string;
   billsIncludedAmount: string;
 
   dueDayOfMonth: string;
@@ -68,6 +70,8 @@ type CreateLeaseForm = {
   depositAmount: string;
   depositDiscounted: boolean;
   depositDate: string;
+  depositDays: string;
+  depositReturnDate: string;
   adminFeeAmount: string;
   adminFeeDiscounted: boolean;
   adminFeeDate: string;
@@ -134,6 +138,33 @@ const ymdLessThan = (a: string, b: string) => {
   return new Date(a + 'T00:00:00.000Z').getTime() < new Date(b + 'T00:00:00.000Z').getTime();
 };
 
+const DEFAULT_DEPOSIT_DAYS = '60';
+
+const computeDepositReturnDate = (endDate: string, depositDays: string) => {
+  const days = toNum(depositDays || DEFAULT_DEPOSIT_DAYS);
+  if (!endDate || days === undefined) return '';
+  return addDaysYmd(endDate, days);
+};
+
+const maybeSyncDepositReturnDate = (
+  prev: CreateLeaseForm,
+  patch: Partial<Pick<CreateLeaseForm, 'endDate' | 'depositDays' | 'depositReturnDate' | 'type'>>,
+) => {
+  const nextType = patch.type ?? prev.type;
+  const nextEndDate = patch.endDate ?? prev.endDate;
+  const nextDepositDays = patch.depositDays ?? prev.depositDays ?? DEFAULT_DEPOSIT_DAYS;
+  const prevDefault = computeDepositReturnDate(prev.endDate, prev.depositDays || DEFAULT_DEPOSIT_DAYS);
+  const shouldAutoUpdate = !prev.depositReturnDate || prev.depositReturnDate === prevDefault;
+
+  if (nextType !== 'TENANT' || !shouldAutoUpdate) return patch;
+
+  return {
+    ...patch,
+    depositDays: nextDepositDays,
+    depositReturnDate: computeDepositReturnDate(nextEndDate, nextDepositDays),
+  };
+};
+
 const syncExtraDatesFromBooking = (
   prev: CreateLeaseForm,
   newBookingDate: string,
@@ -159,14 +190,16 @@ const emptyForm = (): CreateLeaseForm => {
     startDate: '',
     endDate: '',
     nextPaymentDue: '',
-    monthlyRentWithoutBills: '',
-    monthlyRentDiscounted: false,
     monthlyRentWithBills: '',
+    monthlyRentDiscounted: false,
+    monthlyRentWithoutBills: '',
     billsIncludedAmount: '',
     dueDayOfMonth: '',
     depositAmount: '',
     depositDiscounted: false,
     depositDate: today,
+    depositDays: DEFAULT_DEPOSIT_DAYS,
+    depositReturnDate: '',
     adminFeeAmount: '',
     adminFeeDiscounted: false,
     adminFeeDate: today,
@@ -188,14 +221,18 @@ const leaseToForm = (x: Lease): CreateLeaseForm => {
     startDate: toYmd(x.startDate),
     endDate: toYmd(x.endDate),
     nextPaymentDue: toYmd(x.nextPaymentDue),
-    monthlyRentWithoutBills: toNumString(x.monthlyRentWithoutBills),
-    monthlyRentDiscounted: Boolean(x.monthlyRentDiscounted),
     monthlyRentWithBills: toNumString(x.monthlyRentWithBills),
+    monthlyRentDiscounted: Boolean(x.monthlyRentDiscounted),
+    monthlyRentWithoutBills: toNumString(x.monthlyRentWithoutBills),
     billsIncludedAmount: toNumString(x.billsIncludedAmount),
     dueDayOfMonth: toNumString(x.dueDayOfMonth),
     depositAmount: toNumString(x.depositAmount),
     depositDiscounted: Boolean(x.depositDiscounted),
     depositDate: toYmd(x.depositDate) || booking,
+    depositDays: toNumString(x.depositDays) || (x.type === 'TENANT' ? DEFAULT_DEPOSIT_DAYS : ''),
+    depositReturnDate:
+      toYmd(x.depositReturnDate) ||
+      (x.type === 'TENANT' ? computeDepositReturnDate(toYmd(x.endDate), toNumString(x.depositDays) || DEFAULT_DEPOSIT_DAYS) : ''),
     adminFeeAmount: toNumString(x.adminFeeAmount),
     adminFeeDiscounted: Boolean(x.adminFeeDiscounted),
     adminFeeDate: toYmd(x.adminFeeDate) || booking,
@@ -277,10 +314,12 @@ export default function LeasesPage() {
         toYmd(x.bookingDate),
         toYmd(x.startDate),
         toYmd(x.endDate),
-        x.monthlyRentWithoutBills,
         x.monthlyRentWithBills,
+        x.monthlyRentWithoutBills,
         x.billsIncludedAmount,
         x.depositAmount,
+        x.depositDays,
+        toYmd(x.depositReturnDate),
         x.adminFeeAmount,
         x.registrationTaxAmount,
       ].some((value) => String(value ?? '').toLowerCase().includes(q)),
@@ -331,8 +370,13 @@ export default function LeasesPage() {
     if (!form.endDate) return 'Seleziona endDate (obbligatoria)';
     if (ymdLessThan(form.endDate, form.startDate)) return 'endDate deve essere >= startDate';
 
-    const net = toNum(form.monthlyRentWithoutBills);
-    if (net === undefined) return 'monthlyRentWithoutBills obbligatorio (numero)';
+    const gross = toNum(form.monthlyRentWithBills);
+    if (gross === undefined) return 'Canone mensile bills included obbligatorio (numero)';
+
+    const depositDays = toNum(form.depositDays);
+    if (form.type === 'TENANT' && form.depositDays && (depositDays === undefined || depositDays < 0)) {
+      return 'Deposit days deve essere un numero maggiore o uguale a 0';
+    }
 
     if (form.type === 'TENANT' && !form.tenantId) return 'Seleziona tenant';
     if (form.type === 'LANDLORD' && !form.landlordId) return 'Seleziona landlord';
@@ -346,7 +390,7 @@ export default function LeasesPage() {
   };
 
   const buildBody = () => {
-    const net = toNum(form.monthlyRentWithoutBills)!;
+    const gross = toNum(form.monthlyRentWithBills)!;
 
     return {
       type: form.type,
@@ -360,9 +404,9 @@ export default function LeasesPage() {
       endDate: form.endDate,
       nextPaymentDue: cleanStr(form.nextPaymentDue) || undefined,
 
-      monthlyRentWithoutBills: net,
+      monthlyRentWithBills: gross,
       monthlyRentDiscounted: form.monthlyRentDiscounted,
-      monthlyRentWithBills: toNum(form.monthlyRentWithBills),
+      monthlyRentWithoutBills: toNum(form.monthlyRentWithoutBills),
       billsIncludedAmount: toNum(form.billsIncludedAmount),
 
       dueDayOfMonth: toNum(form.dueDayOfMonth),
@@ -370,6 +414,8 @@ export default function LeasesPage() {
       depositAmount: toNum(form.depositAmount),
       depositDiscounted: form.depositDiscounted,
       depositDate: cleanStr(form.depositDate) || undefined,
+      depositDays: form.type === 'TENANT' ? toNum(form.depositDays || DEFAULT_DEPOSIT_DAYS) : undefined,
+      depositReturnDate: form.type === 'TENANT' ? cleanStr(form.depositReturnDate) || undefined : undefined,
       adminFeeAmount: toNum(form.adminFeeAmount),
       adminFeeDiscounted: form.adminFeeDiscounted,
       adminFeeDate: cleanStr(form.adminFeeDate) || undefined,
@@ -512,7 +558,10 @@ export default function LeasesPage() {
                   const v = e.target.value as LeaseType;
                   setForm((prev) => ({
                     ...prev,
-                    type: v,
+                    ...maybeSyncDepositReturnDate(prev, {
+                      type: v,
+                      depositDays: v === 'TENANT' ? prev.depositDays || DEFAULT_DEPOSIT_DAYS : prev.depositDays,
+                    }),
                     tenantId: '',
                     landlordId: '',
                     propertyId:
@@ -617,7 +666,13 @@ export default function LeasesPage() {
                 type="date"
                 value={form.endDate}
                 min={form.startDate || undefined}
-                onChange={(e: ChangeEvent<HTMLInputElement>) => onChange('endDate', e.target.value)}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                  const v = e.target.value;
+                  setForm((prev) => ({
+                    ...prev,
+                    ...maybeSyncDepositReturnDate(prev, { endDate: v }),
+                  }));
+                }}
                 disabled={busy}
               />
             </Field>
@@ -632,17 +687,7 @@ export default function LeasesPage() {
               />
             </Field>
 
-            <Field label="monthlyRentWithoutBills (net)" required>
-              <Input
-                type="number"
-                value={form.monthlyRentWithoutBills}
-                onChange={(e: ChangeEvent<HTMLInputElement>) => onChange('monthlyRentWithoutBills', e.target.value)}
-                placeholder="1100"
-                disabled={busy}
-              />
-            </Field>
-
-            <Field label="monthlyRentWithBills (gross)">
+            <Field label="Canone mensile bills included" required>
               <Input
                 type="number"
                 value={form.monthlyRentWithBills}
@@ -652,7 +697,17 @@ export default function LeasesPage() {
               />
             </Field>
 
-            <Field label="billsIncludedAmount">
+            <Field label="Canone mensile senza bills">
+              <Input
+                type="number"
+                value={form.monthlyRentWithoutBills}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => onChange('monthlyRentWithoutBills', e.target.value)}
+                placeholder="1100"
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Bills included amount">
               <Input
                 type="number"
                 value={form.billsIncludedAmount}
@@ -720,6 +775,41 @@ export default function LeasesPage() {
                     Discounted
                   </label>
                 </Field>
+
+                {form.type === 'TENANT' && (
+                  <>
+                    <Field label="Deposit days">
+                      <Input
+                        type="number"
+                        min="0"
+                        value={form.depositDays}
+                        onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                          const v = e.target.value;
+                          setForm((prev) => ({
+                            ...prev,
+                            ...maybeSyncDepositReturnDate(prev, { depositDays: v }),
+                          }));
+                        }}
+                        placeholder="60"
+                        disabled={busy}
+                      />
+                    </Field>
+
+                    <Field label="Deposit return date">
+                      <Input
+                        type="date"
+                        value={form.depositReturnDate}
+                        min={form.endDate || undefined}
+                        onChange={(e: ChangeEvent<HTMLInputElement>) => onChange('depositReturnDate', e.target.value)}
+                        disabled={busy}
+                      />
+                    </Field>
+
+                    <div className="text-xs text-slate-500 flex items-end pb-2">
+                      Default: end date + deposit days
+                    </div>
+                  </>
+                )}
 
                 <Field label="Admin fee amount">
                   <Input
@@ -857,7 +947,9 @@ export default function LeasesPage() {
                 const adminFeeDate = toYmd(x.adminFeeDate) || booking;
                 const bookingCostDate = toYmd(x.bookingCostDate) || booking || start;
                 const registrationTaxDate = toYmd(x.registrationTaxDate) || booking || start;
-                const depositRefundDate = end ? addDaysYmd(end, 60) : '';
+                const depositDays = toNumString(x.depositDays) || DEFAULT_DEPOSIT_DAYS;
+                const depositRefundDate =
+                  toYmd(x.depositReturnDate) || (x.type === 'TENANT' && end ? addDaysYmd(end, Number(depositDays)) : '');
 
                 return (
                   <div
@@ -876,8 +968,8 @@ export default function LeasesPage() {
                         </div>
 
                         <div className="text-sm text-slate-600">
-                          net: {x.monthlyRentWithoutBills ?? '-'} €{discountedLabel(x.monthlyRentDiscounted)}
-                          {x.monthlyRentWithBills !== undefined ? ` · gross: ${x.monthlyRentWithBills} €` : ''}
+                          canone bills included: {x.monthlyRentWithBills ?? '-'} €{discountedLabel(x.monthlyRentDiscounted)}
+                          {x.monthlyRentWithoutBills !== undefined ? ` · senza bills: ${x.monthlyRentWithoutBills} €` : ''}
                           {x.billsIncludedAmount !== undefined ? ` · bills: ${x.billsIncludedAmount} €` : ''}
                           {x.dueDayOfMonth ? ` · dueDay: ${x.dueDayOfMonth}` : ''}
                         </div>
@@ -893,7 +985,7 @@ export default function LeasesPage() {
                             ? `deposit: ${x.depositAmount} € (${depositDate ? formatDateIT(depositDate) : 'n/a'})${discountedLabel(x.depositDiscounted)}`
                             : 'deposit: -'}
                           {x.type === 'TENANT' && x.depositAmount && depositRefundDate
-                            ? ` · refund: ${formatDateIT(depositRefundDate)}`
+                            ? ` · refund: ${formatDateIT(depositRefundDate)} (${depositDays} giorni)`
                             : ''}
                           {x.adminFeeAmount ? ` · adminFee: ${x.adminFeeAmount} € (${adminFeeDate ? formatDateIT(adminFeeDate) : 'n/a'})${discountedLabel(x.adminFeeDiscounted)}` : ''}
                           {x.bookingCostAmount

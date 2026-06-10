@@ -269,7 +269,7 @@ export default function PrezziDisponibilitaPage() {
         const availableYmd = maxYmd(relatedLeases.map((lease) => toYmd(lease.endDate)));
 
         const prices = latestLease
-          ? toFiniteNumber(latestLease.monthlyRentWithoutBills, toFiniteNumber(property.baseMonthlyRent, 0))
+          ? toFiniteNumber(latestLease.monthlyRentWithBills, toFiniteNumber(property.baseMonthlyRent, 0))
           : toFiniteNumber(property.baseMonthlyRent, 0);
 
         const pricesDiscounted = latestLease?.monthlyRentDiscounted ? prices : null;

@@ -19,14 +19,16 @@ type LeaseDoc = {
 
   externalId?: string;
 
-  monthlyRentWithoutBills: number;
+  monthlyRentWithBills: number;
   monthlyRentDiscounted?: boolean;
-  monthlyRentWithBills?: number;
+  monthlyRentWithoutBills?: number;
   billsIncludedAmount?: number;
 
   depositAmount?: number;
   depositDiscounted?: boolean;
   depositDate?: Date;
+  depositDays?: number;
+  depositReturnDate?: Date;
   adminFeeAmount?: number;
   adminFeeDiscounted?: boolean;
   adminFeeDate?: Date;
@@ -210,15 +212,6 @@ export class LeasesService {
       const tenantSnap = await this.tenantsDoc(holderId, dto.tenantId).get();
       if (!tenantSnap.exists) throw new NotFoundException(`Tenant ${dto.tenantId} not found`);
 
-      if (dto.monthlyRentWithBills !== undefined && dto.billsIncludedAmount !== undefined) {
-        const net = dto.monthlyRentWithBills - dto.billsIncludedAmount;
-        const diff = Math.abs(net - dto.monthlyRentWithoutBills);
-        if (diff > 0.01) {
-          throw new BadRequestException(
-            `monthlyRentWithoutBills should equal monthlyRentWithBills - billsIncludedAmount (expected ${net})`,
-          );
-        }
-      }
     }
 
     if (dto.type === LeaseType.LANDLORD) {
@@ -243,6 +236,15 @@ export class LeasesService {
       ? this.requireDate(dto.nextPaymentDue, 'nextPaymentDue')
       : undefined;
     const depositDate = dto.depositDate ? this.requireDate(dto.depositDate, 'depositDate') : bookingDate;
+    const depositDays = dto.type === LeaseType.TENANT ? dto.depositDays ?? 60 : undefined;
+    const depositReturnDate =
+      dto.type === LeaseType.TENANT
+        ? dto.depositReturnDate
+          ? this.requireDate(dto.depositReturnDate, 'depositReturnDate')
+          : endDate
+            ? this.addDaysUTC(endDate, depositDays ?? 60)
+            : undefined
+        : undefined;
     const adminFeeDate = dto.adminFeeDate ? this.requireDate(dto.adminFeeDate, 'adminFeeDate') : bookingDate;
     const bookingCostDate = dto.bookingCostDate
       ? this.requireDate(dto.bookingCostDate, 'bookingCostDate')
@@ -264,14 +266,16 @@ export class LeasesService {
 
       externalId: dto.externalId,
 
-      monthlyRentWithoutBills: dto.monthlyRentWithoutBills,
-      monthlyRentDiscounted: dto.monthlyRentDiscounted ?? false,
       monthlyRentWithBills: dto.monthlyRentWithBills,
+      monthlyRentDiscounted: dto.monthlyRentDiscounted ?? false,
+      monthlyRentWithoutBills: dto.monthlyRentWithoutBills,
       billsIncludedAmount: dto.billsIncludedAmount,
 
       depositAmount: dto.depositAmount,
       depositDiscounted: dto.depositDiscounted ?? false,
       depositDate,
+      depositDays,
+      depositReturnDate,
       adminFeeAmount: dto.adminFeeAmount,
       adminFeeDiscounted: dto.adminFeeDiscounted ?? false,
       adminFeeDate,
@@ -329,6 +333,16 @@ export class LeasesService {
         ? this.requireDate(dto.bookingDate, 'bookingDate')
         : this.parseAnyDateLike(current.bookingDate);
 
+    const effectiveType: LeaseType = (dto.type ?? current.type) as LeaseType;
+    const effectiveEndDate =
+      dto.endDate !== undefined ? this.requireDate(dto.endDate, 'endDate') : this.parseAnyDateLike(current.endDate);
+    const effectiveDepositDays = dto.depositDays !== undefined ? dto.depositDays : current.depositDays ?? 60;
+    const shouldRecomputeDepositReturnDate =
+      effectiveType === LeaseType.TENANT &&
+      dto.depositReturnDate === undefined &&
+      (dto.endDate !== undefined || dto.depositDays !== undefined || dto.type !== undefined) &&
+      Boolean(effectiveEndDate);
+
     const updateData = this.cleanData({
       ...dto,
 
@@ -342,6 +356,12 @@ export class LeasesService {
           ? this.requireDate(dto.depositDate, 'depositDate')
           : dto.bookingDate !== undefined
             ? mergedBookingDate
+            : undefined,
+      depositReturnDate:
+        dto.depositReturnDate !== undefined
+          ? this.requireDate(dto.depositReturnDate, 'depositReturnDate')
+          : shouldRecomputeDepositReturnDate && effectiveEndDate
+            ? this.addDaysUTC(effectiveEndDate, effectiveDepositDays)
             : undefined,
       adminFeeDate:
         dto.adminFeeDate !== undefined
@@ -519,7 +539,11 @@ export class LeasesService {
     const aptSnap = await this.propertiesDoc(holderId, apartmentId).get();
     const buildingId = aptSnap.exists ? (aptSnap.data() as any)?.buildingId : undefined;
 
-    const amountNet: number = Number(lease.monthlyRentWithoutBills);
+    const monthlyRentWithBills = Number(lease.monthlyRentWithBills);
+    if (!Number.isFinite(monthlyRentWithBills)) {
+      throw new BadRequestException('lease.monthlyRentWithBills missing or invalid');
+    }
+
     const monthlyRentDiscounted = Boolean(lease.monthlyRentDiscounted);
     const depositDiscounted = Boolean(lease.depositDiscounted);
     const adminFeeDiscounted = Boolean(lease.adminFeeDiscounted);
@@ -528,6 +552,10 @@ export class LeasesService {
     const bookingDate: Date | undefined = this.parseAnyDateLike(lease.bookingDate);
     const depositAmount = lease.depositAmount !== undefined ? Number(lease.depositAmount) : undefined;
     const depositDate: Date = this.parseAnyDateLike(lease.depositDate) ?? bookingDate ?? startDate;
+    const rawDepositDays = lease.depositDays !== undefined ? Number(lease.depositDays) : 60;
+    const depositDays = Number.isFinite(rawDepositDays) ? rawDepositDays : 60;
+    const depositReturnDate: Date | undefined =
+      this.parseAnyDateLike(lease.depositReturnDate) ?? (endDate ? this.addDaysUTC(endDate, depositDays) : undefined);
     const adminFeeAmount = lease.adminFeeAmount !== undefined ? Number(lease.adminFeeAmount) : undefined;
     const adminFeeDate: Date = this.parseAnyDateLike(lease.adminFeeDate) ?? bookingDate ?? startDate;
     const bookingCostAmount = lease.bookingCostAmount !== undefined ? Number(lease.bookingCostAmount) : undefined;
@@ -702,15 +730,14 @@ export class LeasesService {
       );
     }
 
-    if (type === LeaseType.TENANT && depositAmount && depositAmount > 0 && endDate) {
-      const refundDate = this.addDaysUTC(endDate, 60);
+    if (type === LeaseType.TENANT && depositAmount && depositAmount > 0 && depositReturnDate) {
       expenses.set(
         `${leaseId}_deposit_refund`,
         this.cleanData({
           leaseId,
           propertyId: apartmentId,
-          costDate: this.isoDate(refundDate),
-          costMonth: this.monthKey(refundDate),
+          costDate: this.isoDate(depositReturnDate),
+          costMonth: this.monthKey(depositReturnDate),
           amount: depositAmount,
           currency: 'EUR',
           type: 'DEPOSIT_REFUND',
@@ -762,11 +789,6 @@ export class LeasesService {
       }
 
       if (type === LeaseType.TENANT) {
-        const gross = lease.monthlyRentWithBills;
-        const bills = lease.billsIncludedAmount;
-        const amount =
-          gross !== undefined ? Number(gross) : bills !== undefined ? Number(amountNet) + Number(bills) : Number(amountNet);
-
         payments.set(
           `${leaseId}_rent_${period}`,
           this.cleanData({
@@ -777,7 +799,7 @@ export class LeasesService {
             buildingId: buildingId ?? undefined,
             dueDate: this.isoDate(dueDate),
             paidDate: undefined,
-            amount,
+            amount: monthlyRentWithBills,
             currency: 'EUR',
             kind: 'RENT',
             discounted: monthlyRentDiscounted,
@@ -797,7 +819,7 @@ export class LeasesService {
             landlordId,
             costDate: this.isoDate(dueDate),
             costMonth: period,
-            amount: Number(amountNet),
+            amount: monthlyRentWithBills,
             currency: 'EUR',
             type: 'RENT_TO_LANDLORD',
             discounted: monthlyRentDiscounted,
