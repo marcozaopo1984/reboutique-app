@@ -42,6 +42,8 @@ type LeaseDoc = {
 
   dueDayOfMonth?: number;
 
+  notes?: string;
+
   createdAt: Date;
   updatedAt: Date;
   scheduleGeneratedAt?: Date;
@@ -288,6 +290,8 @@ export class LeasesService {
       registrationTaxDate,
 
       dueDayOfMonth: dto.dueDayOfMonth,
+
+      notes: dto.notes,
 
       createdAt: new Date(),
       updatedAt: new Date(),

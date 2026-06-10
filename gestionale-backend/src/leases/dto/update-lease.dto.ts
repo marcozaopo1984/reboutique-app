@@ -110,4 +110,8 @@ export class UpdateLeaseDto {
   @IsOptional()
   @IsNumber()
   dueDayOfMonth?: number;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
 }

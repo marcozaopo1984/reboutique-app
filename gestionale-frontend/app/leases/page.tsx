@@ -46,6 +46,8 @@ type Lease = {
 
   registrationTaxAmount?: number;
   registrationTaxDate?: any;
+
+  notes?: string;
 };
 
 type CreateLeaseForm = {
@@ -81,6 +83,8 @@ type CreateLeaseForm = {
 
   registrationTaxAmount: string;
   registrationTaxDate: string;
+
+  notes: string;
 };
 
 const cleanStr = (s: string) => s.trim();
@@ -207,6 +211,7 @@ const emptyForm = (): CreateLeaseForm => {
     bookingCostDate: today,
     registrationTaxAmount: '',
     registrationTaxDate: today,
+    notes: '',
   };
 };
 
@@ -240,6 +245,7 @@ const leaseToForm = (x: Lease): CreateLeaseForm => {
     bookingCostDate: toYmd(x.bookingCostDate) || booking,
     registrationTaxAmount: toNumString(x.registrationTaxAmount),
     registrationTaxDate: toYmd(x.registrationTaxDate) || booking,
+    notes: x.notes ?? '',
   };
 };
 
@@ -322,6 +328,7 @@ export default function LeasesPage() {
         toYmd(x.depositReturnDate),
         x.adminFeeAmount,
         x.registrationTaxAmount,
+        x.notes,
       ].some((value) => String(value ?? '').toLowerCase().includes(q)),
     );
   }, [items, landlordLabel, propertyLabel, searchQuery, tenantLabel]);
@@ -425,6 +432,8 @@ export default function LeasesPage() {
 
       registrationTaxAmount: toNum(form.registrationTaxAmount),
       registrationTaxDate: cleanStr(form.registrationTaxDate) || undefined,
+
+      notes: cleanStr(form.notes) || undefined,
     };
   };
 
@@ -790,7 +799,7 @@ export default function LeasesPage() {
                             ...maybeSyncDepositReturnDate(prev, { depositDays: v }),
                           }));
                         }}
-                        placeholder="60"
+                        placeholder="76"
                         disabled={busy}
                       />
                     </Field>
@@ -883,6 +892,19 @@ export default function LeasesPage() {
                 </Field>
               </div>
             </div>
+          </div>
+
+          <div className="md:col-span-3">
+            <Field label="Note contratto">
+              <textarea
+                value={form.notes}
+                onChange={(e: ChangeEvent<HTMLTextAreaElement>) => onChange('notes', e.target.value)}
+                placeholder="Commenti o note libere sul contratto"
+                disabled={busy}
+                rows={4}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500 disabled:bg-slate-100 disabled:text-slate-500"
+              />
+            </Field>
           </div>
 
           <div className="flex items-center gap-3">
@@ -995,6 +1017,12 @@ export default function LeasesPage() {
                             ? ` · regTax: ${x.registrationTaxAmount} € (${registrationTaxDate ? formatDateIT(registrationTaxDate) : 'n/a'})`
                             : ''}
                         </div>
+
+                        {x.notes ? (
+                          <div className="text-xs text-slate-600 mt-1 whitespace-pre-wrap">
+                            Note: {x.notes}
+                          </div>
+                        ) : null}
 
                         <div className="text-[11px] text-slate-400 mt-1">id: {x.id}</div>
                       </div>
