@@ -138,7 +138,7 @@ const ymdLessThan = (a: string, b: string) => {
   return new Date(a + 'T00:00:00.000Z').getTime() < new Date(b + 'T00:00:00.000Z').getTime();
 };
 
-const DEFAULT_DEPOSIT_DAYS = '60';
+const DEFAULT_DEPOSIT_DAYS = '76';
 
 const computeDepositReturnDate = (endDate: string, depositDays: string) => {
   const days = toNum(depositDays || DEFAULT_DEPOSIT_DAYS);
