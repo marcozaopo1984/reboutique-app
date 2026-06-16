@@ -207,6 +207,14 @@ export default function ExpensesPage() {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  const onStatusChange = (value: string) => {
+    setForm((prev) => ({
+      ...prev,
+      status: value as ExpenseStatus,
+      paidDate: value === 'PAID' ? prev.paidDate : '',
+    }));
+  };
+
   const handleInput =
     (key: keyof CreateExpenseForm) =>
     (arg: unknown) => {
@@ -422,7 +430,8 @@ export default function ExpensesPage() {
     if (form.status === 'PAID' && !cleanStr(form.paidDate)) return setError('Se status è PAID, paidDate è obbligatoria');
 
     const costMonth = cleanStr(form.costMonth) || monthFromDate(form.costDate) || undefined;
-    const resolvedPaidDate = cleanStr(form.paidDate) || undefined;
+    const resolvedPaidDate =
+      form.status === 'PAID' ? cleanStr(form.paidDate) || undefined : undefined;
 
     const body: any = {
       propertyId: form.propertyId,
@@ -983,7 +992,7 @@ export default function ExpensesPage() {
             <Field label="Status" required>
               <Select
                 value={form.status}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => onChange('status', e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => onStatusChange(e.target.value)}
                 disabled={busy}
               >
                 <option value="PLANNED">PLANNED</option>
@@ -993,7 +1002,12 @@ export default function ExpensesPage() {
             </Field>
 
             <Field label="Paid date">
-              <Input type="date" value={form.paidDate} onChange={handleInput('paidDate')} disabled={busy} />
+              <Input
+                type="date"
+                value={form.paidDate}
+                onChange={handleInput('paidDate')}
+                disabled={busy || form.status !== 'PAID'}
+              />
             </Field>
 
             <Field label="Description">

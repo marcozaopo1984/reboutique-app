@@ -35,9 +35,10 @@ export class ExpensesService {
     existing?: any,
   ) {
     const finalStatus = status ?? existing?.status ?? 'PLANNED';
-    const finalPaidDate = paidDate ?? existing?.paidDate;
+    const isPaid = String(finalStatus).toUpperCase() === 'PAID';
+    const finalPaidDate = isPaid ? (paidDate ?? existing?.paidDate) : undefined;
 
-    if (String(finalStatus).toUpperCase() === 'PAID' && !finalPaidDate) {
+    if (isPaid && !finalPaidDate) {
       throw new BadRequestException('paidDate is required when status is PAID');
     }
 
@@ -93,7 +94,10 @@ export class ExpensesService {
       description: dto.description?.trim(),
       notes: dto.notes?.trim(),
       status: paidFields.status,
-      paidDate: paidFields.paidDate,
+      paidDate:
+        String(paidFields.status).toUpperCase() === 'PAID'
+          ? paidFields.paidDate
+          : admin.firestore.FieldValue.delete(),
       updatedAt: new Date(),
     });
 

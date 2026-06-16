@@ -43,6 +43,9 @@ type LeaseDoc = {
   dueDayOfMonth?: number;
 
   notes?: string;
+  poweredBy?: string;
+  piumone?: string;
+  foundThrough?: string;
 
   createdAt: Date;
   updatedAt: Date;
@@ -292,6 +295,9 @@ export class LeasesService {
       dueDayOfMonth: dto.dueDayOfMonth,
 
       notes: dto.notes,
+      poweredBy: dto.poweredBy,
+      piumone: dto.piumone,
+      foundThrough: dto.foundThrough,
 
       createdAt: new Date(),
       updatedAt: new Date(),

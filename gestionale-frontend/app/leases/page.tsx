@@ -48,6 +48,9 @@ type Lease = {
   registrationTaxDate?: any;
 
   notes?: string;
+  poweredBy?: string;
+  piumone?: string;
+  foundThrough?: string;
 };
 
 type CreateLeaseForm = {
@@ -85,6 +88,9 @@ type CreateLeaseForm = {
   registrationTaxDate: string;
 
   notes: string;
+  poweredBy: string;
+  piumone: boolean;
+  foundThrough: string;
 };
 
 const cleanStr = (s: string) => s.trim();
@@ -122,6 +128,7 @@ const toYmd = (v: any): string => {
 
 const todayYmd = () => new Date().toISOString().slice(0, 10);
 const discountedLabel = (flag?: boolean) => (flag ? ' [discounted]' : '');
+const isPiumoneYes = (value: any) => String(value ?? '').trim().toLowerCase() === 'si' || value === true;
 
 const addDaysYmd = (ymd: string, days: number) => {
   if (!ymd) return '';
@@ -212,6 +219,9 @@ const emptyForm = (): CreateLeaseForm => {
     registrationTaxAmount: '',
     registrationTaxDate: today,
     notes: '',
+    poweredBy: '',
+    piumone: false,
+    foundThrough: '',
   };
 };
 
@@ -246,6 +256,9 @@ const leaseToForm = (x: Lease): CreateLeaseForm => {
     registrationTaxAmount: toNumString(x.registrationTaxAmount),
     registrationTaxDate: toYmd(x.registrationTaxDate) || booking,
     notes: x.notes ?? '',
+    poweredBy: x.poweredBy ?? '',
+    piumone: isPiumoneYes(x.piumone),
+    foundThrough: x.foundThrough ?? '',
   };
 };
 
@@ -328,6 +341,9 @@ export default function LeasesPage() {
         toYmd(x.depositReturnDate),
         x.adminFeeAmount,
         x.registrationTaxAmount,
+        x.poweredBy,
+        x.piumone,
+        x.foundThrough,
         x.notes,
       ].some((value) => String(value ?? '').toLowerCase().includes(q)),
     );
@@ -434,6 +450,9 @@ export default function LeasesPage() {
       registrationTaxDate: cleanStr(form.registrationTaxDate) || undefined,
 
       notes: cleanStr(form.notes) || undefined,
+      poweredBy: cleanStr(form.poweredBy) || undefined,
+      piumone: form.piumone ? 'si' : undefined,
+      foundThrough: cleanStr(form.foundThrough) || undefined,
     };
   };
 
@@ -894,6 +913,38 @@ export default function LeasesPage() {
             </div>
           </div>
 
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <Field label="Powered by">
+              <Input
+                value={form.poweredBy}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => onChange('poweredBy', e.target.value)}
+                placeholder="Es. Milano Home / Portale / Partner"
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Found through">
+              <Input
+                value={form.foundThrough}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => onChange('foundThrough', e.target.value)}
+                placeholder="Es. Airbnb / Spotahome / referral"
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Piumone">
+              <label className="flex items-center gap-2 text-sm text-slate-700 border rounded-md px-3 py-2 bg-white">
+                <input
+                  type="checkbox"
+                  checked={form.piumone}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => onChange('piumone', e.target.checked)}
+                  disabled={busy}
+                />
+                Sì
+              </label>
+            </Field>
+          </div>
+
           <div className="md:col-span-3">
             <Field label="Note contratto">
               <textarea
@@ -1017,6 +1068,14 @@ export default function LeasesPage() {
                             ? ` · regTax: ${x.registrationTaxAmount} € (${registrationTaxDate ? formatDateIT(registrationTaxDate) : 'n/a'})`
                             : ''}
                         </div>
+
+                        {(x.poweredBy || x.foundThrough || isPiumoneYes(x.piumone)) ? (
+                          <div className="text-xs text-slate-600 mt-1">
+                            {x.poweredBy ? `Powered by: ${x.poweredBy}` : ''}
+                            {x.foundThrough ? `${x.poweredBy ? ' · ' : ''}Found through: ${x.foundThrough}` : ''}
+                            {isPiumoneYes(x.piumone) ? `${x.poweredBy || x.foundThrough ? ' · ' : ''}Piumone: sì` : ''}
+                          </div>
+                        ) : null}
 
                         {x.notes ? (
                           <div className="text-xs text-slate-600 mt-1 whitespace-pre-wrap">

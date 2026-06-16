@@ -112,4 +112,16 @@ export class CreateLeaseDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsString()
+  poweredBy?: string;
+
+  @IsOptional()
+  @IsString()
+  piumone?: string;
+
+  @IsOptional()
+  @IsString()
+  foundThrough?: string;
 }
