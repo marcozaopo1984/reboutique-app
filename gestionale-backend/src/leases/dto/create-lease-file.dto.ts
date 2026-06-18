@@ -2,7 +2,7 @@ import { IsNumber, IsOptional, IsString, IsUrl, Min } from 'class-validator';
 
 export class CreateLeaseFileDto {
   @IsString()
-  fileName: string;
+  fileName!: string;
 
   @IsOptional()
   @IsString()

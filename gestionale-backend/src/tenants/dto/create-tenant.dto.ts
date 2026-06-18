@@ -11,10 +11,10 @@ import {
 export class CreateTenantDto {
   // Anagrafica base
   @IsString()
-  firstName: string;
+  firstName!: string;
 
   @IsString()
-  lastName: string;
+  lastName!: string;
 
   // Contatti
   @IsOptional()

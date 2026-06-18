@@ -9,7 +9,7 @@ import {
 export class CreateTenantFileDto {
   @IsString()
   @IsNotEmpty()
-  fileName: string; // es: contratto-2025-01.pdf
+  fileName!: string; // es: contratto-2025-01.pdf
 
   @IsOptional()
   @IsString()

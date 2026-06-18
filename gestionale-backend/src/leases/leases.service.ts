@@ -5,6 +5,7 @@ import { CreateLeaseDto, LeaseType } from './dto/create-lease.dto';
 import { UpdateLeaseDto } from './dto/update-lease.dto';
 import * as admin from 'firebase-admin';
 import { CreateLeaseFileDto } from './dto/create-lease-file.dto';
+import { buildRentInstallments, firstRentDueDate } from './rent.schedule';
 
 type LeaseDoc = {
   type: LeaseType;
@@ -438,23 +439,10 @@ export class LeasesService {
     return `${y}-${String(m).padStart(2, '0')}`;
   }
 
-  private addMonthsUTC(d: Date, months: number): Date {
-    const nd = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-    nd.setUTCMonth(nd.getUTCMonth() + months);
-    return nd;
-  }
-
   private addDaysUTC(d: Date, days: number): Date {
     const nd = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
     nd.setUTCDate(nd.getUTCDate() + days);
     return nd;
-  }
-
-  private computeDueDateForMonth(base: Date, dueDayOfMonth: number): Date {
-    const y = base.getUTCFullYear();
-    const m = base.getUTCMonth();
-    const day = Math.max(1, Math.min(28, dueDayOfMonth));
-    return new Date(Date.UTC(y, m, day));
   }
 
   private async deriveApartmentId(holderId: string, propertyId: string): Promise<string> {
@@ -510,12 +498,16 @@ export class LeasesService {
     if (this.parseAnyDateLike(lease?.scheduleGeneratedAt)) return true;
 
     const type: LeaseType = lease.type;
-    const firstPeriod = this.monthKey(new Date(Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), 1)));
+    const firstRentDate = firstRentDueDate(startDate, lease.dueDayOfMonth);
+    const firstPeriod = this.monthKey(firstRentDate);
 
-    const refs = [
+    const rentRef =
       type === LeaseType.TENANT
         ? this.paymentsCollection(holderId).doc(`${leaseId}_rent_${firstPeriod}`)
-        : this.expensesCollection(holderId).doc(`${leaseId}_rent_to_landlord_${firstPeriod}`),
+        : this.expensesCollection(holderId).doc(`${leaseId}_rent_to_landlord_${firstPeriod}`);
+
+    const refs = [
+      rentRef,
       this.expensesCollection(holderId).doc(`${leaseId}_booking_cost`),
       this.expensesCollection(holderId).doc(`${leaseId}_registration_tax`),
       this.expensesCollection(holderId).doc(`${leaseId}_deposit_refund`),
@@ -549,9 +541,10 @@ export class LeasesService {
 
     const startDate = this.requireDate(lease.startDate, 'lease.startDate');
     const endDate: Date | undefined = this.parseAnyDateLike(lease.endDate);
-    const firstDue: Date | undefined = this.parseAnyDateLike(lease.nextPaymentDue);
-
-    const dueDayOfMonth: number = lease.dueDayOfMonth ?? 5;
+    const dueDayOfMonth: number | undefined =
+      lease.dueDayOfMonth !== undefined && lease.dueDayOfMonth !== null
+        ? Number(lease.dueDayOfMonth)
+        : undefined;
 
     if (type === LeaseType.TENANT) {
       if (!tenantId) throw new BadRequestException('TENANT lease missing tenantId');
@@ -778,42 +771,16 @@ export class LeasesService {
       );
     }
 
-    const startMonthCursor = new Date(Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), 1));
-    const maxEnd = endDate
-      ? new Date(Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth(), 1))
-      : this.addMonthsUTC(startMonthCursor, monthsIfNoEnd - 1);
+    const rentInstallments = buildRentInstallments({
+      startDate,
+      endDate,
+      monthlyRent: monthlyRentWithBills,
+      dueDayOfMonth,
+      monthsIfNoEnd,
+    });
 
-    let dueCursor: Date | undefined = firstDue
-      ? new Date(Date.UTC(firstDue.getUTCFullYear(), firstDue.getUTCMonth(), Math.min(28, firstDue.getUTCDate())))
-      : undefined;
-
-    let cursor = startMonthCursor;
-    while (cursor.getTime() <= maxEnd.getTime()) {
-      const period = this.monthKey(cursor);
-
-      let dueDate: Date;
-      if (dueCursor) {
-        while (
-          dueCursor.getUTCFullYear() < cursor.getUTCFullYear() ||
-          (dueCursor.getUTCFullYear() === cursor.getUTCFullYear() && dueCursor.getUTCMonth() < cursor.getUTCMonth())
-        ) {
-          dueCursor = this.addMonthsUTC(dueCursor, 1);
-          dueCursor = new Date(
-            Date.UTC(dueCursor.getUTCFullYear(), dueCursor.getUTCMonth(), Math.min(28, dueCursor.getUTCDate())),
-          );
-        }
-
-        if (dueCursor.getUTCFullYear() === cursor.getUTCFullYear() && dueCursor.getUTCMonth() === cursor.getUTCMonth()) {
-          dueDate = dueCursor;
-          const next = this.addMonthsUTC(dueCursor, 1);
-          dueCursor = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth(), Math.min(28, dueDate.getUTCDate())));
-        } else {
-          dueDate = this.computeDueDateForMonth(cursor, dueDayOfMonth);
-        }
-      } else {
-        dueDate = this.computeDueDateForMonth(cursor, dueDayOfMonth);
-      }
-
+    for (const installment of rentInstallments) {
+      const period = this.monthKey(installment.dueDate);
       if (type === LeaseType.TENANT) {
         payments.set(
           `${leaseId}_rent_${period}`,
@@ -823,9 +790,9 @@ export class LeasesService {
             propertyId,
             apartmentId,
             buildingId: buildingId ?? undefined,
-            dueDate: this.isoDate(dueDate),
+            dueDate: this.isoDate(installment.dueDate),
             paidDate: undefined,
-            amount: monthlyRentWithBills,
+            amount: installment.amount,
             currency: 'EUR',
             kind: 'RENT',
             discounted: monthlyRentDiscounted,
@@ -843,9 +810,9 @@ export class LeasesService {
             leaseId,
             propertyId,
             landlordId,
-            costDate: this.isoDate(dueDate),
+            costDate: this.isoDate(installment.dueDate),
             costMonth: period,
-            amount: monthlyRentWithBills,
+            amount: installment.amount,
             currency: 'EUR',
             type: 'RENT_TO_LANDLORD',
             discounted: monthlyRentDiscounted,
@@ -858,8 +825,6 @@ export class LeasesService {
           }),
         );
       }
-
-      cursor = this.addMonthsUTC(cursor, 1);
     }
 
     return { payments, expenses };

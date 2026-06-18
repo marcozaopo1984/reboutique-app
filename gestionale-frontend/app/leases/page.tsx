@@ -684,7 +684,6 @@ export default function LeasesPage() {
                   setForm((prev) => ({
                     ...prev,
                     startDate: v,
-                    nextPaymentDue: prev.nextPaymentDue || v,
                     endDate: prev.endDate && ymdLessThan(prev.endDate, v) ? '' : prev.endDate,
                   }));
                 }}
@@ -716,6 +715,9 @@ export default function LeasesPage() {
                 onChange={(e: ChangeEvent<HTMLInputElement>) => onChange('nextPaymentDue', e.target.value)}
                 disabled={busy}
               />
+              <p className="mt-1 text-xs text-slate-500">
+                Campo informativo: non modifica il piano canoni, che usa Due day of month oppure la Start date.
+              </p>
             </Field>
 
             <Field label="Canone mensile bills included" required>
@@ -755,9 +757,12 @@ export default function LeasesPage() {
                 max="28"
                 value={form.dueDayOfMonth}
                 onChange={(e: ChangeEvent<HTMLInputElement>) => onChange('dueDayOfMonth', e.target.value)}
-                placeholder="5"
+                placeholder="Vuoto = ricorrenza dalla Start date"
                 disabled={busy}
               />
+              <p className="mt-1 text-xs text-slate-500">
+                Se valorizzato, il primo canone cade alla prima ricorrenza utile e include il pro-rata dalla Start date.
+              </p>
             </Field>
 
             <Field label="Canone discounted">

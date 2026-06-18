@@ -2,10 +2,10 @@ import { IsNumber, IsOptional, IsString, IsUrl, Min } from 'class-validator';
 
 export class CreatePropertyFileDto {
   @IsString()
-  fileName: string;
+  fileName!: string;
 
   @IsString()
-  storagePath: string;
+  storagePath!: string;
 
   @IsOptional()
   @IsUrl({ require_tld: false })
