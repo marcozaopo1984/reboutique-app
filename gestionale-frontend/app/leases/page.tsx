@@ -149,10 +149,8 @@ const ymdLessThan = (a: string, b: string) => {
   return new Date(a + 'T00:00:00.000Z').getTime() < new Date(b + 'T00:00:00.000Z').getTime();
 };
 
-const DEFAULT_DEPOSIT_DAYS = '76';
-
 const computeDepositReturnDate = (endDate: string, depositDays: string) => {
-  const days = toNum(depositDays || DEFAULT_DEPOSIT_DAYS);
+  const days = depositDays.trim() === '' ? 0 : toNum(depositDays);
   if (!endDate || days === undefined) return '';
   return addDaysYmd(endDate, days);
 };
@@ -163,8 +161,8 @@ const maybeSyncDepositReturnDate = (
 ) => {
   const nextType = patch.type ?? prev.type;
   const nextEndDate = patch.endDate ?? prev.endDate;
-  const nextDepositDays = patch.depositDays ?? prev.depositDays ?? DEFAULT_DEPOSIT_DAYS;
-  const prevDefault = computeDepositReturnDate(prev.endDate, prev.depositDays || DEFAULT_DEPOSIT_DAYS);
+  const nextDepositDays = patch.depositDays ?? prev.depositDays;
+  const prevDefault = computeDepositReturnDate(prev.endDate, prev.depositDays);
   const shouldAutoUpdate = !prev.depositReturnDate || prev.depositReturnDate === prevDefault;
 
   if (nextType !== 'TENANT' || !shouldAutoUpdate) return patch;
@@ -209,7 +207,7 @@ const emptyForm = (): CreateLeaseForm => {
     depositAmount: '',
     depositDiscounted: false,
     depositDate: today,
-    depositDays: DEFAULT_DEPOSIT_DAYS,
+    depositDays: '',
     depositReturnDate: '',
     adminFeeAmount: '',
     adminFeeDiscounted: false,
@@ -244,10 +242,10 @@ const leaseToForm = (x: Lease): CreateLeaseForm => {
     depositAmount: toNumString(x.depositAmount),
     depositDiscounted: Boolean(x.depositDiscounted),
     depositDate: toYmd(x.depositDate) || booking,
-    depositDays: toNumString(x.depositDays) || (x.type === 'TENANT' ? DEFAULT_DEPOSIT_DAYS : ''),
+    depositDays: toNumString(x.depositDays),
     depositReturnDate:
       toYmd(x.depositReturnDate) ||
-      (x.type === 'TENANT' ? computeDepositReturnDate(toYmd(x.endDate), toNumString(x.depositDays) || DEFAULT_DEPOSIT_DAYS) : ''),
+      (x.type === 'TENANT' ? computeDepositReturnDate(toYmd(x.endDate), toNumString(x.depositDays)) : ''),
     adminFeeAmount: toNumString(x.adminFeeAmount),
     adminFeeDiscounted: Boolean(x.adminFeeDiscounted),
     adminFeeDate: toYmd(x.adminFeeDate) || booking,
@@ -437,7 +435,12 @@ export default function LeasesPage() {
       depositAmount: toNum(form.depositAmount),
       depositDiscounted: form.depositDiscounted,
       depositDate: cleanStr(form.depositDate) || undefined,
-      depositDays: form.type === 'TENANT' ? toNum(form.depositDays || DEFAULT_DEPOSIT_DAYS) : undefined,
+      depositDays:
+        form.type === 'TENANT'
+          ? form.depositDays.trim() === ''
+            ? null
+            : toNum(form.depositDays)
+          : undefined,
       depositReturnDate: form.type === 'TENANT' ? cleanStr(form.depositReturnDate) || undefined : undefined,
       adminFeeAmount: toNum(form.adminFeeAmount),
       adminFeeDiscounted: form.adminFeeDiscounted,
@@ -588,7 +591,7 @@ export default function LeasesPage() {
                     ...prev,
                     ...maybeSyncDepositReturnDate(prev, {
                       type: v,
-                      depositDays: v === 'TENANT' ? prev.depositDays || DEFAULT_DEPOSIT_DAYS : prev.depositDays,
+                      depositDays: prev.depositDays,
                     }),
                     tenantId: '',
                     landlordId: '',
@@ -818,7 +821,7 @@ export default function LeasesPage() {
                             ...maybeSyncDepositReturnDate(prev, { depositDays: v }),
                           }));
                         }}
-                        placeholder="76"
+                        placeholder="Vuoto = restituzione alla end date"
                         disabled={busy}
                       />
                     </Field>
@@ -834,7 +837,7 @@ export default function LeasesPage() {
                     </Field>
 
                     <div className="text-xs text-slate-500 flex items-end pb-2">
-                      Default: end date + deposit days
+                      Se vuoto: deposit return date = end date. Se valorizzato: end date + deposit days.
                     </div>
                   </>
                 )}
@@ -1020,9 +1023,10 @@ export default function LeasesPage() {
                 const adminFeeDate = toYmd(x.adminFeeDate) || booking;
                 const bookingCostDate = toYmd(x.bookingCostDate) || booking || start;
                 const registrationTaxDate = toYmd(x.registrationTaxDate) || booking || start;
-                const depositDays = toNumString(x.depositDays) || DEFAULT_DEPOSIT_DAYS;
+                const depositDays = toNumString(x.depositDays);
                 const depositRefundDate =
-                  toYmd(x.depositReturnDate) || (x.type === 'TENANT' && end ? addDaysYmd(end, Number(depositDays)) : '');
+                  toYmd(x.depositReturnDate) ||
+                  (x.type === 'TENANT' && end ? computeDepositReturnDate(end, depositDays) : '');
 
                 return (
                   <div
@@ -1058,7 +1062,7 @@ export default function LeasesPage() {
                             ? `deposit: ${x.depositAmount} € (${depositDate ? formatDateIT(depositDate) : 'n/a'})${discountedLabel(x.depositDiscounted)}`
                             : 'deposit: -'}
                           {x.type === 'TENANT' && x.depositAmount && depositRefundDate
-                            ? ` · refund: ${formatDateIT(depositRefundDate)} (${depositDays} giorni)`
+                            ? ` · refund: ${formatDateIT(depositRefundDate)} (${depositDays || '0'} giorni)`
                             : ''}
                           {x.adminFeeAmount ? ` · adminFee: ${x.adminFeeAmount} € (${adminFeeDate ? formatDateIT(adminFeeDate) : 'n/a'})${discountedLabel(x.adminFeeDiscounted)}` : ''}
                           {x.bookingCostAmount

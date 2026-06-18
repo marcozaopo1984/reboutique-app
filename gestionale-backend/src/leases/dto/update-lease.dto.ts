@@ -69,7 +69,7 @@ export class UpdateLeaseDto {
 
   @IsOptional()
   @IsNumber()
-  depositDays?: number;
+  depositDays?: number | null;
 
   @IsOptional()
   @IsISO8601()

@@ -241,13 +241,15 @@ export class LeasesService {
       ? this.requireDate(dto.nextPaymentDue, 'nextPaymentDue')
       : undefined;
     const depositDate = dto.depositDate ? this.requireDate(dto.depositDate, 'depositDate') : bookingDate;
-    const depositDays = dto.type === LeaseType.TENANT ? dto.depositDays ?? 76 : undefined;
+    const depositDays =
+      dto.type === LeaseType.TENANT && dto.depositDays !== null ? dto.depositDays : undefined;
+    const effectiveDepositDays = depositDays ?? 0;
     const depositReturnDate =
       dto.type === LeaseType.TENANT
         ? dto.depositReturnDate
           ? this.requireDate(dto.depositReturnDate, 'depositReturnDate')
           : endDate
-            ? this.addDaysUTC(endDate, depositDays ?? 76)
+            ? this.addDaysUTC(endDate, effectiveDepositDays)
             : undefined
         : undefined;
     const adminFeeDate = dto.adminFeeDate ? this.requireDate(dto.adminFeeDate, 'adminFeeDate') : bookingDate;
@@ -346,7 +348,12 @@ export class LeasesService {
     const effectiveType: LeaseType = (dto.type ?? current.type) as LeaseType;
     const effectiveEndDate =
       dto.endDate !== undefined ? this.requireDate(dto.endDate, 'endDate') : this.parseAnyDateLike(current.endDate);
-    const effectiveDepositDays = dto.depositDays !== undefined ? dto.depositDays : current.depositDays ?? 76;
+    const effectiveDepositDays =
+      dto.depositDays === null
+        ? 0
+        : dto.depositDays !== undefined
+          ? dto.depositDays
+          : current.depositDays ?? 0;
     const shouldRecomputeDepositReturnDate =
       effectiveType === LeaseType.TENANT &&
       dto.depositReturnDate === undefined &&
@@ -355,6 +362,13 @@ export class LeasesService {
 
     const updateData = this.cleanData({
       ...dto,
+
+      depositDays:
+        effectiveType !== LeaseType.TENANT && dto.type !== undefined
+          ? admin.firestore.FieldValue.delete()
+          : dto.depositDays === null
+            ? admin.firestore.FieldValue.delete()
+            : dto.depositDays,
 
       bookingDate: dto.bookingDate ? this.requireDate(dto.bookingDate, 'bookingDate') : undefined,
       startDate: dto.startDate ? this.requireDate(dto.startDate, 'startDate') : undefined,
@@ -368,11 +382,13 @@ export class LeasesService {
             ? mergedBookingDate
             : undefined,
       depositReturnDate:
-        dto.depositReturnDate !== undefined
-          ? this.requireDate(dto.depositReturnDate, 'depositReturnDate')
-          : shouldRecomputeDepositReturnDate && effectiveEndDate
-            ? this.addDaysUTC(effectiveEndDate, effectiveDepositDays)
-            : undefined,
+        effectiveType !== LeaseType.TENANT && dto.type !== undefined
+          ? admin.firestore.FieldValue.delete()
+          : dto.depositReturnDate !== undefined
+            ? this.requireDate(dto.depositReturnDate, 'depositReturnDate')
+            : shouldRecomputeDepositReturnDate && effectiveEndDate
+              ? this.addDaysUTC(effectiveEndDate, effectiveDepositDays)
+              : undefined,
       adminFeeDate:
         dto.adminFeeDate !== undefined
           ? this.requireDate(dto.adminFeeDate, 'adminFeeDate')
@@ -562,8 +578,8 @@ export class LeasesService {
     const bookingDate: Date | undefined = this.parseAnyDateLike(lease.bookingDate);
     const depositAmount = lease.depositAmount !== undefined ? Number(lease.depositAmount) : undefined;
     const depositDate: Date = this.parseAnyDateLike(lease.depositDate) ?? bookingDate ?? startDate;
-    const rawDepositDays = lease.depositDays !== undefined ? Number(lease.depositDays) : 76;
-    const depositDays = Number.isFinite(rawDepositDays) ? rawDepositDays : 76;
+    const rawDepositDays = lease.depositDays !== undefined ? Number(lease.depositDays) : 0;
+    const depositDays = Number.isFinite(rawDepositDays) ? rawDepositDays : 0;
     const depositReturnDate: Date | undefined =
       this.parseAnyDateLike(lease.depositReturnDate) ?? (endDate ? this.addDaysUTC(endDate, depositDays) : undefined);
     const adminFeeAmount = lease.adminFeeAmount !== undefined ? Number(lease.adminFeeAmount) : undefined;

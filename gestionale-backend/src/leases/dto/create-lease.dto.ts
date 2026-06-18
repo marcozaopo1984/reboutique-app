@@ -67,7 +67,7 @@ export class CreateLeaseDto {
 
   @IsOptional()
   @IsNumber()
-  depositDays?: number;
+  depositDays?: number | null;
 
   @IsOptional()
   @IsISO8601()
