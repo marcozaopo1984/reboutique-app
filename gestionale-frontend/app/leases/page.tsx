@@ -174,25 +174,18 @@ const maybeSyncDepositReturnDate = (
   };
 };
 
-const syncExtraDatesFromBooking = (
-  prev: CreateLeaseForm,
-  newBookingDate: string,
-): Pick<CreateLeaseForm, 'bookingDate' | 'adminFeeDate' | 'bookingCostDate' | 'registrationTaxDate'> => ({
-  bookingDate: newBookingDate,
-  adminFeeDate: !prev.adminFeeDate || prev.adminFeeDate === prev.bookingDate ? newBookingDate : prev.adminFeeDate,
-  bookingCostDate: !prev.bookingCostDate || prev.bookingCostDate === prev.bookingDate ? newBookingDate : prev.bookingCostDate,
-  registrationTaxDate:
-    !prev.registrationTaxDate || prev.registrationTaxDate === prev.bookingDate
-      ? newBookingDate
-      : prev.registrationTaxDate,
-});
-
-const syncDepositDateFromStart = (
+const syncUpfrontDatesFromStart = (
   prev: CreateLeaseForm,
   newStartDate: string,
-): Pick<CreateLeaseForm, 'startDate' | 'depositDate'> => ({
+): Pick<CreateLeaseForm, 'startDate' | 'depositDate' | 'adminFeeDate' | 'bookingCostDate' | 'registrationTaxDate'> => ({
   startDate: newStartDate,
   depositDate: !prev.depositDate || prev.depositDate === prev.startDate ? newStartDate : prev.depositDate,
+  adminFeeDate: !prev.adminFeeDate || prev.adminFeeDate === prev.startDate ? newStartDate : prev.adminFeeDate,
+  bookingCostDate: !prev.bookingCostDate || prev.bookingCostDate === prev.startDate ? newStartDate : prev.bookingCostDate,
+  registrationTaxDate:
+    !prev.registrationTaxDate || prev.registrationTaxDate === prev.startDate
+      ? newStartDate
+      : prev.registrationTaxDate,
 });
 
 const emptyForm = (): CreateLeaseForm => {
@@ -218,11 +211,11 @@ const emptyForm = (): CreateLeaseForm => {
     depositReturnDate: '',
     adminFeeAmount: '',
     adminFeeDiscounted: false,
-    adminFeeDate: today,
+    adminFeeDate: '',
     bookingCostAmount: '',
-    bookingCostDate: today,
+    bookingCostDate: '',
     registrationTaxAmount: '',
-    registrationTaxDate: today,
+    registrationTaxDate: '',
     notes: '',
     poweredBy: '',
     piumone: false,
@@ -232,13 +225,14 @@ const emptyForm = (): CreateLeaseForm => {
 
 const leaseToForm = (x: Lease): CreateLeaseForm => {
   const booking = toYmd(x.bookingDate) || todayYmd();
+  const start = toYmd(x.startDate);
   return {
     type: x.type ?? 'TENANT',
     propertyId: x.propertyId ?? '',
     tenantId: x.tenantId ?? '',
     landlordId: x.landlordId ?? '',
     bookingDate: booking,
-    startDate: toYmd(x.startDate),
+    startDate: start,
     endDate: toYmd(x.endDate),
     nextPaymentDue: toYmd(x.nextPaymentDue),
     monthlyRentWithBills: toNumString(x.monthlyRentWithBills),
@@ -248,18 +242,18 @@ const leaseToForm = (x: Lease): CreateLeaseForm => {
     dueDayOfMonth: toNumString(x.dueDayOfMonth),
     depositAmount: toNumString(x.depositAmount),
     depositDiscounted: Boolean(x.depositDiscounted),
-    depositDate: toYmd(x.depositDate) || toYmd(x.startDate),
+    depositDate: toYmd(x.depositDate) || start,
     depositDays: toNumString(x.depositDays),
     depositReturnDate:
       toYmd(x.depositReturnDate) ||
       (x.type === 'TENANT' ? computeDepositReturnDate(toYmd(x.endDate), toNumString(x.depositDays)) : ''),
     adminFeeAmount: toNumString(x.adminFeeAmount),
     adminFeeDiscounted: Boolean(x.adminFeeDiscounted),
-    adminFeeDate: toYmd(x.adminFeeDate) || booking,
+    adminFeeDate: toYmd(x.adminFeeDate) || start,
     bookingCostAmount: toNumString(x.bookingCostAmount),
-    bookingCostDate: toYmd(x.bookingCostDate) || booking,
+    bookingCostDate: toYmd(x.bookingCostDate) || start,
     registrationTaxAmount: toNumString(x.registrationTaxAmount),
-    registrationTaxDate: toYmd(x.registrationTaxDate) || booking,
+    registrationTaxDate: toYmd(x.registrationTaxDate) || start,
     notes: x.notes ?? '',
     poweredBy: x.poweredBy ?? '',
     piumone: isPiumoneYes(x.piumone),
@@ -671,13 +665,7 @@ export default function LeasesPage() {
               <Input
                 type="date"
                 value={form.bookingDate}
-                onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                  const nextBooking = e.target.value;
-                  setForm((prev) => ({
-                    ...prev,
-                    ...syncExtraDatesFromBooking(prev, nextBooking),
-                  }));
-                }}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => onChange('bookingDate', e.target.value)}
                 disabled={busy}
               />
             </Field>
@@ -690,7 +678,7 @@ export default function LeasesPage() {
                   const v = e.target.value;
                   setForm((prev) => ({
                     ...prev,
-                    ...syncDepositDateFromStart(prev, v),
+                    ...syncUpfrontDatesFromStart(prev, v),
                     endDate: prev.endDate && ymdLessThan(prev.endDate, v) ? '' : prev.endDate,
                   }));
                 }}
@@ -786,6 +774,7 @@ export default function LeasesPage() {
 
             <div className="md:col-span-3 border-t pt-3 mt-1">
               <div className="text-sm font-medium mb-2">Cashflow extra</div>
+              <p className="text-xs text-slate-500 mb-3">Se le date extra sono vuote, il default è la Start date del contratto.</p>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <Field label="Deposit amount">
@@ -1032,9 +1021,9 @@ export default function LeasesPage() {
                 const nextDue = toYmd(x.nextPaymentDue);
 
                 const depositDate = toYmd(x.depositDate) || start;
-                const adminFeeDate = toYmd(x.adminFeeDate) || booking;
-                const bookingCostDate = toYmd(x.bookingCostDate) || booking || start;
-                const registrationTaxDate = toYmd(x.registrationTaxDate) || booking || start;
+                const adminFeeDate = toYmd(x.adminFeeDate) || start;
+                const bookingCostDate = toYmd(x.bookingCostDate) || start;
+                const registrationTaxDate = toYmd(x.registrationTaxDate) || start;
                 const depositDays = toNumString(x.depositDays);
                 const depositRefundDate =
                   toYmd(x.depositReturnDate) ||

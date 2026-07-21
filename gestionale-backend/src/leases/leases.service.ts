@@ -114,6 +114,11 @@ export class LeasesService {
     return d.toISOString().slice(0, 10);
   }
 
+  private sameDateOnly(a?: Date, b?: Date): boolean {
+    if (!a || !b) return false;
+    return this.isoDate(a) === this.isoDate(b);
+  }
+
   private leasesCollection(holderId: string) {
     return this.firebaseService.firestore
       .collection('holders')
@@ -253,13 +258,13 @@ export class LeasesService {
             ? this.addDaysUTC(endDate, effectiveDepositDays)
             : undefined
         : undefined;
-    const adminFeeDate = dto.adminFeeDate ? this.requireDate(dto.adminFeeDate, 'adminFeeDate') : bookingDate;
+    const adminFeeDate = dto.adminFeeDate ? this.requireDate(dto.adminFeeDate, 'adminFeeDate') : startDate;
     const bookingCostDate = dto.bookingCostDate
       ? this.requireDate(dto.bookingCostDate, 'bookingCostDate')
-      : bookingDate;
+      : startDate;
     const registrationTaxDate = dto.registrationTaxDate
       ? this.requireDate(dto.registrationTaxDate, 'registrationTaxDate')
-      : bookingDate;
+      : startDate;
 
     const data: LeaseDoc = this.cleanData({
       type: dto.type,
@@ -341,19 +346,15 @@ export class LeasesService {
       }
     }
 
-    const mergedBookingDate =
-      dto.bookingDate !== undefined
-        ? this.requireDate(dto.bookingDate, 'bookingDate')
-        : this.parseAnyDateLike(current.bookingDate);
-    const previousStartDate = this.parseAnyDateLike(current.startDate);
-    const mergedStartDate =
-      dto.startDate !== undefined ? this.requireDate(dto.startDate, 'startDate') : previousStartDate;
-    const currentDepositDate = this.parseAnyDateLike(current.depositDate);
-    const shouldSyncDepositDateToStart =
-      dto.depositDate === undefined &&
-      dto.startDate !== undefined &&
-      Boolean(mergedStartDate) &&
-      (!currentDepositDate || !previousStartDate || currentDepositDate.getTime() === previousStartDate.getTime());
+    const currentStartDate = this.parseAnyDateLike(current.startDate);
+    const effectiveStartDate =
+      dto.startDate !== undefined ? this.requireDate(dto.startDate, 'startDate') : currentStartDate;
+
+    const shouldSyncUpfrontDateToStart = (fieldName: string): boolean => {
+      if (dto.startDate === undefined || !effectiveStartDate) return false;
+      const currentValue = this.parseAnyDateLike(current[fieldName]);
+      return !currentValue || this.sameDateOnly(currentValue, currentStartDate);
+    };
 
     const effectiveType: LeaseType = (dto.type ?? current.type) as LeaseType;
     const effectiveEndDate =
@@ -388,8 +389,8 @@ export class LeasesService {
       depositDate:
         dto.depositDate !== undefined
           ? this.requireDate(dto.depositDate, 'depositDate')
-          : shouldSyncDepositDateToStart && mergedStartDate
-            ? mergedStartDate
+          : shouldSyncUpfrontDateToStart('depositDate')
+            ? effectiveStartDate
             : undefined,
       depositReturnDate:
         effectiveType !== LeaseType.TENANT && dto.type !== undefined
@@ -402,20 +403,20 @@ export class LeasesService {
       adminFeeDate:
         dto.adminFeeDate !== undefined
           ? this.requireDate(dto.adminFeeDate, 'adminFeeDate')
-          : dto.bookingDate !== undefined
-            ? mergedBookingDate
+          : shouldSyncUpfrontDateToStart('adminFeeDate')
+            ? effectiveStartDate
             : undefined,
       bookingCostDate:
         dto.bookingCostDate !== undefined
           ? this.requireDate(dto.bookingCostDate, 'bookingCostDate')
-          : dto.bookingDate !== undefined
-            ? mergedBookingDate
+          : shouldSyncUpfrontDateToStart('bookingCostDate')
+            ? effectiveStartDate
             : undefined,
       registrationTaxDate:
         dto.registrationTaxDate !== undefined
           ? this.requireDate(dto.registrationTaxDate, 'registrationTaxDate')
-          : dto.bookingDate !== undefined
-            ? mergedBookingDate
+          : shouldSyncUpfrontDateToStart('registrationTaxDate')
+            ? effectiveStartDate
             : undefined,
 
       updatedAt: new Date(),
@@ -577,7 +578,6 @@ export class LeasesService {
     const adminFeeDiscounted = Boolean(lease.adminFeeDiscounted);
     const now = new Date();
 
-    const bookingDate: Date | undefined = this.parseAnyDateLike(lease.bookingDate);
     const depositAmount = lease.depositAmount !== undefined ? Number(lease.depositAmount) : undefined;
     const depositDate: Date = this.parseAnyDateLike(lease.depositDate) ?? startDate;
     const rawDepositDays = lease.depositDays !== undefined ? Number(lease.depositDays) : 0;
@@ -585,13 +585,13 @@ export class LeasesService {
     const depositReturnDate: Date | undefined =
       this.parseAnyDateLike(lease.depositReturnDate) ?? (endDate ? this.addDaysUTC(endDate, depositDays) : undefined);
     const adminFeeAmount = lease.adminFeeAmount !== undefined ? Number(lease.adminFeeAmount) : undefined;
-    const adminFeeDate: Date = this.parseAnyDateLike(lease.adminFeeDate) ?? bookingDate ?? startDate;
+    const adminFeeDate: Date = this.parseAnyDateLike(lease.adminFeeDate) ?? startDate;
     const bookingCostAmount = lease.bookingCostAmount !== undefined ? Number(lease.bookingCostAmount) : undefined;
-    const bookingCostDate: Date = this.parseAnyDateLike(lease.bookingCostDate) ?? bookingDate ?? startDate;
+    const bookingCostDate: Date = this.parseAnyDateLike(lease.bookingCostDate) ?? startDate;
     const registrationTaxAmount =
       lease.registrationTaxAmount !== undefined ? Number(lease.registrationTaxAmount) : undefined;
     const registrationTaxDate: Date =
-      this.parseAnyDateLike(lease.registrationTaxDate) ?? bookingDate ?? startDate;
+      this.parseAnyDateLike(lease.registrationTaxDate) ?? startDate;
 
     const payments = new Map<string, any>();
     const expenses = new Map<string, any>();
