@@ -177,15 +177,22 @@ const maybeSyncDepositReturnDate = (
 const syncExtraDatesFromBooking = (
   prev: CreateLeaseForm,
   newBookingDate: string,
-): Pick<CreateLeaseForm, 'bookingDate' | 'depositDate' | 'adminFeeDate' | 'bookingCostDate' | 'registrationTaxDate'> => ({
+): Pick<CreateLeaseForm, 'bookingDate' | 'adminFeeDate' | 'bookingCostDate' | 'registrationTaxDate'> => ({
   bookingDate: newBookingDate,
-  depositDate: !prev.depositDate || prev.depositDate === prev.bookingDate ? newBookingDate : prev.depositDate,
   adminFeeDate: !prev.adminFeeDate || prev.adminFeeDate === prev.bookingDate ? newBookingDate : prev.adminFeeDate,
   bookingCostDate: !prev.bookingCostDate || prev.bookingCostDate === prev.bookingDate ? newBookingDate : prev.bookingCostDate,
   registrationTaxDate:
     !prev.registrationTaxDate || prev.registrationTaxDate === prev.bookingDate
       ? newBookingDate
       : prev.registrationTaxDate,
+});
+
+const syncDepositDateFromStart = (
+  prev: CreateLeaseForm,
+  newStartDate: string,
+): Pick<CreateLeaseForm, 'startDate' | 'depositDate'> => ({
+  startDate: newStartDate,
+  depositDate: !prev.depositDate || prev.depositDate === prev.startDate ? newStartDate : prev.depositDate,
 });
 
 const emptyForm = (): CreateLeaseForm => {
@@ -206,7 +213,7 @@ const emptyForm = (): CreateLeaseForm => {
     dueDayOfMonth: '',
     depositAmount: '',
     depositDiscounted: false,
-    depositDate: today,
+    depositDate: '',
     depositDays: '',
     depositReturnDate: '',
     adminFeeAmount: '',
@@ -241,7 +248,7 @@ const leaseToForm = (x: Lease): CreateLeaseForm => {
     dueDayOfMonth: toNumString(x.dueDayOfMonth),
     depositAmount: toNumString(x.depositAmount),
     depositDiscounted: Boolean(x.depositDiscounted),
-    depositDate: toYmd(x.depositDate) || booking,
+    depositDate: toYmd(x.depositDate) || toYmd(x.startDate),
     depositDays: toNumString(x.depositDays),
     depositReturnDate:
       toYmd(x.depositReturnDate) ||
@@ -683,7 +690,7 @@ export default function LeasesPage() {
                   const v = e.target.value;
                   setForm((prev) => ({
                     ...prev,
-                    startDate: v,
+                    ...syncDepositDateFromStart(prev, v),
                     endDate: prev.endDate && ymdLessThan(prev.endDate, v) ? '' : prev.endDate,
                   }));
                 }}
@@ -1024,7 +1031,7 @@ export default function LeasesPage() {
                 const end = toYmd(x.endDate);
                 const nextDue = toYmd(x.nextPaymentDue);
 
-                const depositDate = toYmd(x.depositDate) || booking;
+                const depositDate = toYmd(x.depositDate) || start;
                 const adminFeeDate = toYmd(x.adminFeeDate) || booking;
                 const bookingCostDate = toYmd(x.bookingCostDate) || booking || start;
                 const registrationTaxDate = toYmd(x.registrationTaxDate) || booking || start;

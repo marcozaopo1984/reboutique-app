@@ -241,7 +241,7 @@ export class LeasesService {
     const nextPaymentDue = dto.nextPaymentDue
       ? this.requireDate(dto.nextPaymentDue, 'nextPaymentDue')
       : undefined;
-    const depositDate = dto.depositDate ? this.requireDate(dto.depositDate, 'depositDate') : bookingDate;
+    const depositDate = dto.depositDate ? this.requireDate(dto.depositDate, 'depositDate') : startDate;
     const depositDays =
       dto.type === LeaseType.TENANT && dto.depositDays !== null ? dto.depositDays : undefined;
     const effectiveDepositDays = depositDays ?? 0;
@@ -345,6 +345,15 @@ export class LeasesService {
       dto.bookingDate !== undefined
         ? this.requireDate(dto.bookingDate, 'bookingDate')
         : this.parseAnyDateLike(current.bookingDate);
+    const previousStartDate = this.parseAnyDateLike(current.startDate);
+    const mergedStartDate =
+      dto.startDate !== undefined ? this.requireDate(dto.startDate, 'startDate') : previousStartDate;
+    const currentDepositDate = this.parseAnyDateLike(current.depositDate);
+    const shouldSyncDepositDateToStart =
+      dto.depositDate === undefined &&
+      dto.startDate !== undefined &&
+      Boolean(mergedStartDate) &&
+      (!currentDepositDate || !previousStartDate || currentDepositDate.getTime() === previousStartDate.getTime());
 
     const effectiveType: LeaseType = (dto.type ?? current.type) as LeaseType;
     const effectiveEndDate =
@@ -379,8 +388,8 @@ export class LeasesService {
       depositDate:
         dto.depositDate !== undefined
           ? this.requireDate(dto.depositDate, 'depositDate')
-          : dto.bookingDate !== undefined
-            ? mergedBookingDate
+          : shouldSyncDepositDateToStart && mergedStartDate
+            ? mergedStartDate
             : undefined,
       depositReturnDate:
         effectiveType !== LeaseType.TENANT && dto.type !== undefined
@@ -570,7 +579,7 @@ export class LeasesService {
 
     const bookingDate: Date | undefined = this.parseAnyDateLike(lease.bookingDate);
     const depositAmount = lease.depositAmount !== undefined ? Number(lease.depositAmount) : undefined;
-    const depositDate: Date = this.parseAnyDateLike(lease.depositDate) ?? bookingDate ?? startDate;
+    const depositDate: Date = this.parseAnyDateLike(lease.depositDate) ?? startDate;
     const rawDepositDays = lease.depositDays !== undefined ? Number(lease.depositDays) : 0;
     const depositDays = Number.isFinite(rawDepositDays) ? rawDepositDays : 0;
     const depositReturnDate: Date | undefined =
