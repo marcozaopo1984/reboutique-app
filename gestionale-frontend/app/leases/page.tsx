@@ -180,7 +180,10 @@ const syncUpfrontDatesFromStart = (
 ): Pick<CreateLeaseForm, 'startDate' | 'depositDate' | 'adminFeeDate' | 'bookingCostDate' | 'registrationTaxDate'> => ({
   startDate: newStartDate,
   depositDate: !prev.depositDate || prev.depositDate === prev.startDate ? newStartDate : prev.depositDate,
-  adminFeeDate: !prev.adminFeeDate || prev.adminFeeDate === prev.startDate ? newStartDate : prev.adminFeeDate,
+  adminFeeDate:
+    prev.type === 'LANDLORD' && (!prev.adminFeeDate || prev.adminFeeDate === prev.startDate)
+      ? newStartDate
+      : prev.adminFeeDate,
   bookingCostDate: !prev.bookingCostDate || prev.bookingCostDate === prev.startDate ? newStartDate : prev.bookingCostDate,
   registrationTaxDate:
     !prev.registrationTaxDate || prev.registrationTaxDate === prev.startDate
@@ -249,7 +252,7 @@ const leaseToForm = (x: Lease): CreateLeaseForm => {
       (x.type === 'TENANT' ? computeDepositReturnDate(toYmd(x.endDate), toNumString(x.depositDays)) : ''),
     adminFeeAmount: toNumString(x.adminFeeAmount),
     adminFeeDiscounted: Boolean(x.adminFeeDiscounted),
-    adminFeeDate: toYmd(x.adminFeeDate) || start,
+    adminFeeDate: toYmd(x.adminFeeDate) || (x.type === 'LANDLORD' ? start : ''),
     bookingCostAmount: toNumString(x.bookingCostAmount),
     bookingCostDate: toYmd(x.bookingCostDate) || start,
     registrationTaxAmount: toNumString(x.registrationTaxAmount),
@@ -854,12 +857,19 @@ export default function LeasesPage() {
                 </Field>
 
                 <Field label="Admin fee date">
-                  <Input
-                    type="date"
-                    value={form.adminFeeDate}
-                    onChange={(e: ChangeEvent<HTMLInputElement>) => onChange('adminFeeDate', e.target.value)}
-                    disabled={busy}
-                  />
+                  <div className="space-y-1">
+                    <Input
+                      type="date"
+                      value={form.adminFeeDate}
+                      onChange={(e: ChangeEvent<HTMLInputElement>) => onChange('adminFeeDate', e.target.value)}
+                      disabled={busy}
+                    />
+                    <div className="text-xs text-slate-500">
+                      {form.type === 'TENANT'
+                        ? 'Se vuota: booking date; se assente anche la booking date: start date.'
+                        : 'Se vuota: start date.'}
+                    </div>
+                  </div>
                 </Field>
 
                 <Field label="Admin fee discounted">
@@ -1021,7 +1031,7 @@ export default function LeasesPage() {
                 const nextDue = toYmd(x.nextPaymentDue);
 
                 const depositDate = toYmd(x.depositDate) || start;
-                const adminFeeDate = toYmd(x.adminFeeDate) || start;
+                const adminFeeDate = toYmd(x.adminFeeDate) || (x.type === 'TENANT' ? booking : '') || start;
                 const bookingCostDate = toYmd(x.bookingCostDate) || start;
                 const registrationTaxDate = toYmd(x.registrationTaxDate) || start;
                 const depositDays = toNumString(x.depositDays);

@@ -258,7 +258,11 @@ export class LeasesService {
             ? this.addDaysUTC(endDate, effectiveDepositDays)
             : undefined
         : undefined;
-    const adminFeeDate = dto.adminFeeDate ? this.requireDate(dto.adminFeeDate, 'adminFeeDate') : startDate;
+    const adminFeeDate = dto.adminFeeDate
+      ? this.requireDate(dto.adminFeeDate, 'adminFeeDate')
+      : dto.type === LeaseType.TENANT
+        ? undefined
+        : startDate;
     const bookingCostDate = dto.bookingCostDate
       ? this.requireDate(dto.bookingCostDate, 'bookingCostDate')
       : startDate;
@@ -403,9 +407,11 @@ export class LeasesService {
       adminFeeDate:
         dto.adminFeeDate !== undefined
           ? this.requireDate(dto.adminFeeDate, 'adminFeeDate')
-          : shouldSyncUpfrontDateToStart('adminFeeDate')
-            ? effectiveStartDate
-            : undefined,
+          : effectiveType === LeaseType.TENANT
+            ? undefined
+            : shouldSyncUpfrontDateToStart('adminFeeDate')
+              ? effectiveStartDate
+              : undefined,
       bookingCostDate:
         dto.bookingCostDate !== undefined
           ? this.requireDate(dto.bookingCostDate, 'bookingCostDate')
@@ -585,7 +591,10 @@ export class LeasesService {
     const depositReturnDate: Date | undefined =
       this.parseAnyDateLike(lease.depositReturnDate) ?? (endDate ? this.addDaysUTC(endDate, depositDays) : undefined);
     const adminFeeAmount = lease.adminFeeAmount !== undefined ? Number(lease.adminFeeAmount) : undefined;
-    const adminFeeDate: Date = this.parseAnyDateLike(lease.adminFeeDate) ?? startDate;
+    const bookingDate: Date | undefined = this.parseAnyDateLike(lease.bookingDate);
+    const explicitAdminFeeDate: Date | undefined = this.parseAnyDateLike(lease.adminFeeDate);
+    const tenantAdminFeeDate: Date = explicitAdminFeeDate ?? bookingDate ?? startDate;
+    const landlordAdminFeeDate: Date = explicitAdminFeeDate ?? startDate;
     const bookingCostAmount = lease.bookingCostAmount !== undefined ? Number(lease.bookingCostAmount) : undefined;
     const bookingCostDate: Date = this.parseAnyDateLike(lease.bookingCostDate) ?? startDate;
     const registrationTaxAmount =
@@ -630,14 +639,14 @@ export class LeasesService {
             propertyId,
             apartmentId,
             buildingId: buildingId ?? undefined,
-            dueDate: this.isoDate(adminFeeDate),
+            dueDate: this.isoDate(tenantAdminFeeDate),
             paidDate: undefined,
             amount: adminFeeAmount,
             currency: 'EUR',
             kind: 'ADMIN_FEE',
             discounted: adminFeeDiscounted,
             status: 'PLANNED',
-            period: this.monthKey(adminFeeDate),
+            period: this.monthKey(tenantAdminFeeDate),
             generatedFromLeaseSchedule: true,
             createdAt: now,
             updatedAt: now,
@@ -699,8 +708,8 @@ export class LeasesService {
             leaseId,
             propertyId: apartmentId,
             landlordId,
-            costDate: this.isoDate(adminFeeDate),
-            costMonth: this.monthKey(adminFeeDate),
+            costDate: this.isoDate(landlordAdminFeeDate),
+            costMonth: this.monthKey(landlordAdminFeeDate),
             amount: adminFeeAmount,
             currency: 'EUR',
             type: 'ADMIN_FEE_TO_LANDLORD',
