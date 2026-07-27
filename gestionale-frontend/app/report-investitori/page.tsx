@@ -440,26 +440,53 @@ export default function ReportInvestitoriPage() {
 
   const computeOccupancyAverage = () => {
     if (!rangeDates || totalUnitsCount <= 0) return null;
-    const activeLeases = leases.filter((l) => l.type === 'TENANT');
+
     const totalDays = diffDays(rangeDates.start, rangeDates.endExclusive);
     if (totalDays <= 0) return null;
 
-    let sumRatio = 0;
-    for (let i = 0; i < totalDays; i += 1) {
-      const day = addDays(rangeDates.start, i);
-      const dayYmd = day.toISOString().slice(0, 10);
-      const activeCount = activeLeases.filter((l) => {
-        const start = toYmd(l.startDate);
-        const end = toYmd(l.endDate);
-        if (!start) return false;
-        if (start > dayYmd) return false;
-        if (end && end < dayYmd) return false;
-        return true;
-      }).length;
-      sumRatio += activeCount / totalUnitsCount;
+    const tenantLeasesByProperty = new Map<string, Lease[]>();
+    for (const lease of leases) {
+      if (lease.type !== 'TENANT' || !lease.propertyId) continue;
+      if (!tenantLeasesByProperty.has(lease.propertyId)) {
+        tenantLeasesByProperty.set(lease.propertyId, []);
+      }
+      tenantLeasesByProperty.get(lease.propertyId)!.push(lease);
     }
 
-    return sumRatio / totalDays;
+    const lowerThresholdRatio = 4 / 31;
+    const upperThresholdRatio = 16 / 31;
+
+    let totalWeight = 0;
+
+    for (const property of properties) {
+      const propertyLeases = tenantLeasesByProperty.get(property.id) ?? [];
+      let occupiedDays = 0;
+
+      for (let dayIndex = 0; dayIndex < totalDays; dayIndex += 1) {
+        const dayYmd = addDays(rangeDates.start, dayIndex).toISOString().slice(0, 10);
+        const isOccupied = propertyLeases.some((lease) => {
+          const start = toYmd(lease.startDate);
+          const end = toYmd(lease.endDate);
+          if (!start || start > dayYmd) return false;
+          if (end && end < dayYmd) return false;
+          return true;
+        });
+
+        if (isOccupied) occupiedDays += 1;
+      }
+
+      const occupiedRatio = occupiedDays / totalDays;
+      const weight =
+        occupiedRatio < lowerThresholdRatio
+          ? 0
+          : occupiedRatio < upperThresholdRatio
+            ? 0.5
+            : 1;
+
+      totalWeight += weight;
+    }
+
+    return totalWeight / totalUnitsCount;
   };
 
   const summaryValues = useMemo(() => {
