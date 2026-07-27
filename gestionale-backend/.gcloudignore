@@ -1,0 +1,29 @@
+# File di configurazione gcloud
+.gcloudignore
+
+# Repository
+.git
+.gitignore
+
+# Applica anche le esclusioni del repository
+#!include:.gitignore
+
+# Dipendenze e build locali
+node_modules/
+dist/
+coverage/
+
+# Credenziali e configurazioni locali
+firebase-service-account.json
+firebase-service-account*.json
+.env
+.env.*
+!.env.example
+
+# Dati e report locali
+.import-state/
+import-data/
+migration-reports/
+
+# Archivi locali
+*.zip
