@@ -6,7 +6,6 @@ import {
   UnauthorizedException,
   ForbiddenException,
 } from '@nestjs/common';
-import * as admin from 'firebase-admin';
 import { FirebaseService } from '../firebase/firebase.service';
 
 @Injectable()
@@ -25,7 +24,7 @@ export class FirebaseAuthGuard implements CanActivate {
     }
 
     try {
-      const decodedToken = await admin.auth().verifyIdToken(token);
+      const decodedToken = await this.firebaseService.auth.verifyIdToken(token);
       const uid = decodedToken.uid;
       const firestore = this.firebaseService.firestore;
 
@@ -49,13 +48,14 @@ export class FirebaseAuthGuard implements CanActivate {
         const raw = userDoc.data() as {
           role?: 'HOLDER' | 'TENANT';
           holderId?: string;
+          holderID?: string;
         };
         if (!raw.role) {
           throw new ForbiddenException('User role not set');
         }
         userData = {
           role: raw.role,
-          holderId: raw.holderId,
+          holderId: raw.holderID ?? raw.holderId,
         };
       }
 
