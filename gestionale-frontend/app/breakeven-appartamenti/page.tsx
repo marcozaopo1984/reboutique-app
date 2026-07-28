@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { fetchWithAuth } from '@/lib/apiClient';
 import { Field, Input, Select } from '@/components/form/Field';
@@ -145,7 +145,7 @@ const downloadCsv = (filename: string, csv: string) => {
   URL.revokeObjectURL(url);
 };
 
-export default function BreakevenAppartamentiPage() {
+function BreakevenAppartamentiContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -869,5 +869,13 @@ export default function BreakevenAppartamentiPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function BreakevenAppartamentiPage() {
+  return (
+    <Suspense fallback={<div className="app-shell p-6">Caricamento...</div>}>
+      <BreakevenAppartamentiContent />
+    </Suspense>
   );
 }

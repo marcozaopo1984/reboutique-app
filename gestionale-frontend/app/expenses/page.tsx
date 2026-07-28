@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { fetchWithAuth } from '@/lib/apiClient';
 import { formatDateIT } from '@/lib/dateFormat';
@@ -153,7 +153,7 @@ const fmtStatus = (s: string) => {
   return s;
 };
 
-export default function ExpensesPage() {
+function ExpensesContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -1163,5 +1163,13 @@ export default function ExpensesPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function ExpensesPage() {
+  return (
+    <Suspense fallback={<div className="app-shell p-6">Caricamento...</div>}>
+      <ExpensesContent />
+    </Suspense>
   );
 }

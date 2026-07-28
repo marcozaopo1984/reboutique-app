@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { fetchWithAuth } from '@/lib/apiClient';
 import { formatDateIT } from '@/lib/dateFormat';
@@ -133,7 +133,7 @@ const valueFromInputChange = (arg: unknown): string => {
   return '';
 };
 
-export default function PaymentsPage() {
+function PaymentsContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -1129,5 +1129,13 @@ export default function PaymentsPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function PaymentsPage() {
+  return (
+    <Suspense fallback={<div className="app-shell p-6">Caricamento...</div>}>
+      <PaymentsContent />
+    </Suspense>
   );
 }
