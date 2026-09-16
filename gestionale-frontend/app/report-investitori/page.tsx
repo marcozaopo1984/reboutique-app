@@ -315,7 +315,14 @@ export default function ReportInvestitoriPage() {
     return { start, end, endExclusive: addDays(end, 1) };
   }, [dateFrom, dateTo]);
 
-  const totalUnitsCount = useMemo(() => properties.length || 0, [properties]);
+  // L'occupancy rate va calcolato solo sulle unità effettivamente affittabili
+  // (ROOM / BED), escludendo gli APARTMENT dal denominatore.
+  const occupancyProperties = useMemo(
+    () => properties.filter((p) => p.type === 'ROOM' || p.type === 'BED'),
+    [properties],
+  );
+
+  const totalUnitsCount = useMemo(() => occupancyProperties.length || 0, [occupancyProperties]);
 
   const sumPayments = (predicate: (p: Payment) => boolean, mode: Mode) =>
     payments.reduce((acc, p) => {
@@ -458,7 +465,7 @@ export default function ReportInvestitoriPage() {
 
     let totalWeight = 0;
 
-    for (const property of properties) {
+    for (const property of occupancyProperties) {
       const propertyLeases = tenantLeasesByProperty.get(property.id) ?? [];
       let occupiedDays = 0;
 
