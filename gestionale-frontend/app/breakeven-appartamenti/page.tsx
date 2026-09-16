@@ -41,6 +41,7 @@ type Payment = {
 type Expense = {
   id: string;
   propertyId: string;
+  apartmentId?: string;
   costDate: any;
   amount: number;
   type: string;
@@ -55,17 +56,35 @@ type Filters = {
   apartmentId: string;
 };
 
+// Normalizza i type delle expenses per rendere il matching indipendente da
+// maiuscole/minuscole, spazi, trattini e accenti.
+// Esempi:
+//   "Consumi"            -> "CONSUMI"
+//   "imposte e tasse"    -> "IMPOSTE_E_TASSE"
+//   "Volture Energia"    -> "VOLTURE_ENERGIA"
+//   "booking-cost"       -> "BOOKING_COST"
+const normalizeExpenseType = (value: unknown): string =>
+  String(value ?? '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+const expenseAliases = (...values: string[]) => values.map(normalizeExpenseType);
+
 const EXPENSE_TYPE_MAP: Record<string, string[]> = {
-  Consumi: ['CONSUMI', 'CONSUMO', 'UTILITIES'],
-  Manutenzioni: ['MANUTENZIONI', 'MANUTENZIONE'],
-  'Imposte e Tasse': ['IMPOSTE_E_TASSE', 'TASSE', 'IMPOSTE'],
-  Mobili: ['MOBILI', 'FURNITURE'],
-  Ristrutturazioni: ['RISTRUTTURAZIONI', 'RISTRUTTURAZIONE', 'RENOVATION'],
-  'Volture Energia': ['VOLTURE_ENERGIA', 'VOLTURA_ENERGIA'],
-  Agenzia: ['AGENZIA', 'AGENCY'],
-  Fideiussione: ['FIDEIUSSIONE', 'GUARANTEE'],
-  'Booking Cost': ['BOOKING_COST'],
-  'Deposito Versato': ['DEPOSIT_REFUND', 'DEPOSIT_RETURN', 'DEPOSITO_VERSATO'],
+  Consumi: expenseAliases('CONSUMI', 'CONSUMO', 'UTILITIES'),
+  Manutenzioni: expenseAliases('MANUTENZIONI', 'MANUTENZIONE'),
+  'Imposte e Tasse': expenseAliases('IMPOSTE_E_TASSE', 'IMPOSTE E TASSE', 'TASSE', 'IMPOSTE'),
+  Mobili: expenseAliases('MOBILI', 'FURNITURE'),
+  Ristrutturazioni: expenseAliases('RISTRUTTURAZIONI', 'RISTRUTTURAZIONE', 'RENOVATION'),
+  'Volture Energia': expenseAliases('VOLTURE_ENERGIA', 'VOLTURA_ENERGIA', 'VOLTURE ENERGIA', 'VOLTURA ENERGIA'),
+  Agenzia: expenseAliases('AGENZIA', 'AGENCY'),
+  Fideiussione: expenseAliases('FIDEIUSSIONE', 'GUARANTEE'),
+  'Booking Cost': expenseAliases('BOOKING_COST', 'BOOKING COST'),
+  'Deposito Versato': expenseAliases('DEPOSIT_REFUND', 'DEPOSIT_RETURN', 'DEPOSITO_VERSATO', 'DEPOSITO VERSATO'),
 };
 
 const PAYMENT_KIND_MAP = {
@@ -288,19 +307,13 @@ function BreakevenAppartamentiContent() {
   const asOfDate = useMemo(() => ymdToUtcDate(asOf), [asOf]);
   const asOfMonth = useMemo(() => monthFromYmd(asOf), [asOf]);
 
-  const activeTenantLeaseIdsByApartment = useMemo(() => {
+  // Tutti i lease TENANT dell'appartamento, senza filtro di stato/attività rispetto ad asOf.
+  // I lease passati, attivi, futuri/inattivi sono tutti inclusi.
+  const tenantLeaseIdsByApartment = useMemo(() => {
     const map = new Map<string, Set<string>>();
-    if (!asOfDate) return map;
 
     for (const l of leases) {
       if (String(l.type) !== 'TENANT') continue;
-
-      const start = dateToYmd(l.startDate);
-      const end = dateToYmd(l.endDate);
-      if (!start) continue;
-
-      const isActive = end ? isBetweenYmd(asOf, start, end) : start <= asOf;
-      if (!isActive) continue;
 
       const aptId = propertyToApartmentId.get(l.propertyId) ?? '';
       if (!aptId) continue;
@@ -308,35 +321,55 @@ function BreakevenAppartamentiContent() {
       if (!map.has(aptId)) map.set(aptId, new Set<string>());
       map.get(aptId)!.add(l.id);
     }
-    return map;
-  }, [leases, propertyToApartmentId, asOfDate, asOf]);
 
+    return map;
+  }, [leases, propertyToApartmentId]);
+
+  // Minima startDate calcolata su tutti i lease TENANT dell'appartamento,
+  // senza limitarsi ai soli contratti attivi alla data asOf.
   const minStartByApartment = useMemo(() => {
     const m = new Map<string, string>();
-    for (const [aptId, leaseIds] of activeTenantLeaseIdsByApartment.entries()) {
+
+    for (const [aptId, leaseIds] of tenantLeaseIdsByApartment.entries()) {
       let min: string | null = null;
+
       for (const lid of leaseIds) {
         const l = leases.find((x) => x.id === lid);
         if (!l) continue;
+
         const s = dateToYmd(l.startDate);
         if (!s) continue;
+
         if (min === null || s < min) min = s;
       }
+
       if (min) m.set(aptId, min);
     }
+
     return m;
-  }, [activeTenantLeaseIdsByApartment, leases]);
+  }, [tenantLeaseIdsByApartment, leases]);
 
   const expensesByApartment = useMemo(() => {
     const m = new Map<string, Expense[]>();
+
     for (const e of expenses) {
-      const aptId = e.propertyId;
+      // Preferisce apartmentId se già presente sull'expense; altrimenti
+      // riconduce propertyId all'appartamento padre tramite la mappa Properties.
+      // In questo modo anche una spesa associata a ROOM/BED confluisce
+      // correttamente nella riga dell'APARTMENT.
+      const aptId =
+        e.apartmentId ||
+        propertyToApartmentId.get(e.propertyId) ||
+        '';
+
       if (!aptId) continue;
+
       if (!m.has(aptId)) m.set(aptId, []);
       m.get(aptId)!.push(e);
     }
+
     return m;
-  }, [expenses]);
+  }, [expenses, propertyToApartmentId]);
 
   const paymentsByApartment = useMemo(() => {
     const m = new Map<string, Payment[]>();
@@ -376,7 +409,7 @@ function BreakevenAppartamentiContent() {
     'Breakeven Economico': number;
     'Current Monthly Margin': number;
 
-    _activeLeaseCount: number;
+    _leaseCount: number;
     _minStart: string;
   };
 
@@ -390,7 +423,7 @@ function BreakevenAppartamentiContent() {
       const aptId = a.id;
       const label = propertyLabel.get(aptId) ?? aptId;
 
-      const leaseIds = activeTenantLeaseIdsByApartment.get(aptId) ?? new Set<string>();
+      const leaseIds = tenantLeaseIdsByApartment.get(aptId) ?? new Set<string>();
       const minStart = minStartByApartment.get(aptId) ?? '';
 
       const fromYmd = minStart || asOf;
@@ -411,8 +444,13 @@ function BreakevenAppartamentiContent() {
             if (!isBetweenYmd(d, fromYmd, toYmdLocal)) continue;
           }
 
-          if (!types.includes(String(e.type ?? ''))) continue;
-          s += Number(e.amount ?? 0);
+          const normalizedType = normalizeExpenseType(e.type);
+          if (!types.includes(normalizedType)) continue;
+
+          const amount = Number(e.amount ?? 0);
+          if (!Number.isFinite(amount)) continue;
+
+          s += amount;
         }
         return s;
       };
@@ -510,7 +548,7 @@ function BreakevenAppartamentiContent() {
         'Breakeven Economico': breakevenEconomic,
         'Current Monthly Margin': monthlyMargin,
 
-        _activeLeaseCount: leaseIds.size,
+        _leaseCount: leaseIds.size,
         _minStart: minStart || '',
       });
     }
@@ -519,7 +557,7 @@ function BreakevenAppartamentiContent() {
   }, [
     apartments,
     propertyLabel,
-    activeTenantLeaseIdsByApartment,
+    tenantLeaseIdsByApartment,
     minStartByApartment,
     expensesByApartment,
     paymentsByApartment,
@@ -596,7 +634,7 @@ function BreakevenAppartamentiContent() {
       'asOf',
       'apartmentId',
       'label',
-      'activeLeases',
+      'tenantLeases',
       'fromMinStart',
       'Consumi',
       'Manutenzioni',
@@ -623,7 +661,7 @@ function BreakevenAppartamentiContent() {
         asOf,
         r.apartmentId,
         r.label,
-        r._activeLeaseCount,
+        r._leaseCount,
         r._minStart,
         r.Consumi,
         r.Manutenzioni,
@@ -657,7 +695,7 @@ function BreakevenAppartamentiContent() {
           <div>
             <h1 className="page-title">Breakeven Appartamenti</h1>
             <p className="page-subtitle">
-              Vista per appartamento alla data selezionata. Somme da inizio contratti TENANT attivi fino alla data.
+              Vista per appartamento alla data selezionata. Somme da inizio di tutti i contratti TENANT fino alla data.
             </p>
           </div>
 
@@ -790,81 +828,83 @@ function BreakevenAppartamentiContent() {
           ) : sorted.length === 0 ? (
             <div className="text-sm text-slate-500">Nessun risultato con i filtri correnti.</div>
           ) : (
-            <div className="overflow-auto">
-              <table className="min-w-[1400px] w-full text-sm">
-                <thead>
-                  <tr className="text-left text-slate-600 border-b">
-                    <th className="py-2 pr-3">Appartamento</th>
-                    <th className="py-2 pr-3">Consumi</th>
-                    <th className="py-2 pr-3">Manutenzioni</th>
-                    <th className="py-2 pr-3">Imposte e Tasse</th>
-                    <th className="py-2 pr-3">Mobili</th>
-                    <th className="py-2 pr-3">Ristrutturazioni</th>
-                    <th className="py-2 pr-3">Volture Energia</th>
-                    <th className="py-2 pr-3">Agenzia</th>
-                    <th className="py-2 pr-3">Fideiussione</th>
-                    <th className="py-2 pr-3">Booking Cost</th>
-                    <th className="py-2 pr-3">Deposito Versato</th>
-                    <th className="py-2 pr-3">Canoni Attivi</th>
-                    <th className="py-2 pr-3">Admin Attive</th>
-                    <th className="py-2 pr-3">Deposito Percepito</th>
-                    <th className="py-2 pr-3">Breakeven di Cassa</th>
-                    <th className="py-2 pr-3">Breakeven Economico</th>
-                    <th className="py-2 pr-3">Current Monthly Margin</th>
-                  </tr>
-                </thead>
+            <>
+              <div className="max-h-[72vh] overflow-auto rounded-lg border border-slate-200">
+                <table className="min-w-[1900px] w-full text-sm">
+                  <thead className="sticky top-0 z-30 bg-slate-100 text-slate-700 shadow-sm">
+                    <tr className="text-left border-b border-slate-200">
+                      <th className="sticky left-0 z-40 min-w-[230px] bg-slate-100 px-3 py-3 whitespace-nowrap">Appartamento</th>
+                      <th className="min-w-[105px] px-3 py-3 text-right whitespace-nowrap">Consumi</th>
+                      <th className="min-w-[120px] px-3 py-3 text-right whitespace-nowrap">Manutenzioni</th>
+                      <th className="min-w-[130px] px-3 py-3 text-right whitespace-nowrap">Imposte e Tasse</th>
+                      <th className="min-w-[90px] px-3 py-3 text-right whitespace-nowrap">Mobili</th>
+                      <th className="min-w-[135px] px-3 py-3 text-right whitespace-nowrap">Ristrutturazioni</th>
+                      <th className="min-w-[125px] px-3 py-3 text-right whitespace-nowrap">Volture Energia</th>
+                      <th className="min-w-[95px] px-3 py-3 text-right whitespace-nowrap">Agenzia</th>
+                      <th className="min-w-[110px] px-3 py-3 text-right whitespace-nowrap">Fideiussione</th>
+                      <th className="min-w-[110px] px-3 py-3 text-right whitespace-nowrap">Booking Cost</th>
+                      <th className="min-w-[135px] px-3 py-3 text-right whitespace-nowrap">Deposito Versato</th>
+                      <th className="min-w-[115px] px-3 py-3 text-right whitespace-nowrap">Canoni Attivi</th>
+                      <th className="min-w-[110px] px-3 py-3 text-right whitespace-nowrap">Admin Attive</th>
+                      <th className="min-w-[145px] px-3 py-3 text-right whitespace-nowrap">Deposito Percepito</th>
+                      <th className="min-w-[155px] px-3 py-3 text-right whitespace-nowrap">Breakeven di Cassa</th>
+                      <th className="min-w-[170px] px-3 py-3 text-right whitespace-nowrap">Breakeven Economico</th>
+                      <th className="min-w-[175px] px-3 py-3 text-right whitespace-nowrap">Current Monthly Margin</th>
+                    </tr>
+                  </thead>
 
                 <tbody>
                   {sorted.map((r) => {
                     const posGreen = (n: number) => (n >= 0 ? 'text-green-700' : 'text-red-700');
 
                     return (
-                      <tr key={r.apartmentId} className="border-b align-top">
-                        <td className="py-2 pr-3">
-                          <div className="font-medium">{r.label}</div>
+                      <tr key={r.apartmentId} className="border-b border-slate-200 align-top hover:bg-slate-50/70">
+                        <td className="sticky left-0 z-20 min-w-[230px] bg-white px-3 py-3">
+                          <div className="font-medium whitespace-nowrap">{r.label}</div>
                           <div className="text-xs text-slate-400">
-                            active leases: {r._activeLeaseCount}
+                            tenant leases: {r._leaseCount}
                             {r._minStart ? ` · from: ${r._minStart}` : ''}
                           </div>
                         </td>
 
-                        <td className="py-2 pr-3">{fmtMoney(r.Consumi)}</td>
-                        <td className="py-2 pr-3">{fmtMoney(r.Manutenzioni)}</td>
-                        <td className="py-2 pr-3">{fmtMoney(r['Imposte e Tasse'])}</td>
-                        <td className="py-2 pr-3">{fmtMoney(r.Mobili)}</td>
-                        <td className="py-2 pr-3">{fmtMoney(r.Ristrutturazioni)}</td>
-                        <td className="py-2 pr-3">{fmtMoney(r['Volture Energia'])}</td>
-                        <td className="py-2 pr-3">{fmtMoney(r.Agenzia)}</td>
-                        <td className="py-2 pr-3">{fmtMoney(r.Fideiussione)}</td>
-                        <td className="py-2 pr-3">{fmtMoney(r['Booking Cost'])}</td>
-                        <td className="py-2 pr-3">{fmtMoney(r['Deposito Versato'])}</td>
+                        <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">{fmtMoney(r.Consumi)}</td>
+                        <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">{fmtMoney(r.Manutenzioni)}</td>
+                        <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">{fmtMoney(r['Imposte e Tasse'])}</td>
+                        <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">{fmtMoney(r.Mobili)}</td>
+                        <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">{fmtMoney(r.Ristrutturazioni)}</td>
+                        <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">{fmtMoney(r['Volture Energia'])}</td>
+                        <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">{fmtMoney(r.Agenzia)}</td>
+                        <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">{fmtMoney(r.Fideiussione)}</td>
+                        <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">{fmtMoney(r['Booking Cost'])}</td>
+                        <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">{fmtMoney(r['Deposito Versato'])}</td>
 
-                        <td className="py-2 pr-3">{fmtMoney(r['Canoni Attivi'])}</td>
-                        <td className="py-2 pr-3">{fmtMoney(r['Admin Attive'])}</td>
-                        <td className="py-2 pr-3">{fmtMoney(r['Deposito Percepito'])}</td>
+                        <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">{fmtMoney(r['Canoni Attivi'])}</td>
+                        <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">{fmtMoney(r['Admin Attive'])}</td>
+                        <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">{fmtMoney(r['Deposito Percepito'])}</td>
 
-                        <td className={`py-2 pr-3 font-semibold ${posGreen(r['Breakeven di Cassa'])}`}>
+                        <td className={`px-3 py-3 text-right whitespace-nowrap tabular-nums font-semibold ${posGreen(r['Breakeven di Cassa'])}`}>
                           {fmtMoney(r['Breakeven di Cassa'])}
                         </td>
 
-                        <td className={`py-2 pr-3 font-semibold ${posGreen(r['Breakeven Economico'])}`}>
+                        <td className={`px-3 py-3 text-right whitespace-nowrap tabular-nums font-semibold ${posGreen(r['Breakeven Economico'])}`}>
                           {fmtMoney(r['Breakeven Economico'])}
                         </td>
 
-                        <td className={`py-2 pr-3 font-semibold ${posGreen(r['Current Monthly Margin'])}`}>
+                        <td className={`px-3 py-3 text-right whitespace-nowrap tabular-nums font-semibold ${posGreen(r['Current Monthly Margin'])}`}>
                           {fmtMoney(r['Current Monthly Margin'])}
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
-              </table>
+                </table>
+              </div>
 
               <div className="text-xs text-slate-400 mt-3">
-                Nota: “attivo” = TENANT con startDate ≤ asOf ≤ endDate (se endDate manca, contratto aperto). Range somme: da
-                min(startDate) dei contratti attivi dell’appartamento fino ad asOf.
+                Nota: sono considerati tutti i contratti TENANT dell’appartamento, senza filtro sul loro stato rispetto ad asOf. Range somme: da
+                min(startDate) di tutti i contratti TENANT dell’appartamento fino ad asOf.
               </div>
-            </div>
+            </>
           )}
         </div>
       </div>

@@ -9,10 +9,21 @@ import { LeasesModule } from './leases/leases.module';
 import { PaymentsModule } from './payments/payments.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { LandlordsModule } from './landlords/landlords.module';
+import { PriceAvailabilityOverridesModule } from './price-availability-overrides/price-availability-overrides.module';
 
 
 @Module({
-  imports: [FirebaseModule, TenantsModule, AuthModule, PropertiesModule, LeasesModule, PaymentsModule, ExpensesModule, LandlordsModule],
+  imports: [
+    FirebaseModule,
+    TenantsModule,
+    AuthModule,
+    PropertiesModule,
+    LeasesModule,
+    PaymentsModule,
+    ExpensesModule,
+    LandlordsModule,
+    PriceAvailabilityOverridesModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })
