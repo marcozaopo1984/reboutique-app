@@ -93,6 +93,21 @@ type CreateLeaseForm = {
   foundThrough: string;
 };
 
+type LeaseStatusFilter = '' | 'ACTIVE' | 'PAST' | 'FUTURE';
+type LeaseSortKey = 'startDate' | 'endDate' | 'bookingDate' | 'rent';
+type LeaseSortDir = 'asc' | 'desc';
+
+type LeaseFilters = {
+  q: string;
+  type: '' | LeaseType;
+  propertyId: string;
+  tenantId: string;
+  landlordId: string;
+  status: LeaseStatusFilter;
+  startMonth: string;
+  endMonth: string;
+};
+
 const cleanStr = (s: string) => s.trim();
 const toNum = (v: string) => {
   const s = cleanStr(v);
@@ -279,7 +294,19 @@ export default function LeasesPage() {
 
   const [form, setForm] = useState<CreateLeaseForm>(emptyForm());
   const [activeTab, setActiveTab] = useState<'list' | 'create'>('list');
-  const [searchQuery, setSearchQuery] = useState('');
+
+  const [filters, setFilters] = useState<LeaseFilters>({
+    q: '',
+    type: '',
+    propertyId: '',
+    tenantId: '',
+    landlordId: '',
+    status: '',
+    startMonth: '',
+    endMonth: '',
+  });
+  const [sortKey, setSortKey] = useState<LeaseSortKey>('startDate');
+  const [sortDir, setSortDir] = useState<LeaseSortDir>('desc');
 
   const onChange = <K extends keyof CreateLeaseForm>(key: K, value: CreateLeaseForm[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -319,37 +346,108 @@ export default function LeasesPage() {
   );
 
   const filteredItems = useMemo(() => {
-    const q = cleanStr(searchQuery).toLowerCase();
-    if (!q) return items;
+    const q = cleanStr(filters.q).toLowerCase();
+    const today = todayYmd();
 
-    return items.filter((x) =>
-      [
-        x.id,
-        x.type,
-        x.propertyId,
-        propertyLabel.get(x.propertyId),
-        x.tenantId,
-        x.tenantId ? tenantLabel.get(x.tenantId) : '',
-        x.landlordId,
-        x.landlordId ? landlordLabel.get(x.landlordId) : '',
-        toYmd(x.bookingDate),
-        toYmd(x.startDate),
-        toYmd(x.endDate),
-        x.monthlyRentWithBills,
-        x.monthlyRentWithoutBills,
-        x.billsIncludedAmount,
-        x.depositAmount,
-        x.depositDays,
-        toYmd(x.depositReturnDate),
-        x.adminFeeAmount,
-        x.registrationTaxAmount,
-        x.poweredBy,
-        x.piumone,
-        x.foundThrough,
-        x.notes,
-      ].some((value) => String(value ?? '').toLowerCase().includes(q)),
-    );
-  }, [items, landlordLabel, propertyLabel, searchQuery, tenantLabel]);
+    return items.filter((x) => {
+      if (filters.type && x.type !== filters.type) return false;
+      if (filters.propertyId && x.propertyId !== filters.propertyId) return false;
+      if (filters.tenantId && x.tenantId !== filters.tenantId) return false;
+      if (filters.landlordId && x.landlordId !== filters.landlordId) return false;
+
+      const startYmd = toYmd(x.startDate);
+      const endYmd = toYmd(x.endDate);
+
+      if (filters.startMonth && !startYmd.startsWith(filters.startMonth)) return false;
+      if (filters.endMonth && !endYmd.startsWith(filters.endMonth)) return false;
+
+      if (filters.status) {
+        const status: LeaseStatusFilter =
+          startYmd && startYmd > today
+            ? 'FUTURE'
+            : endYmd && endYmd < today
+              ? 'PAST'
+              : 'ACTIVE';
+
+        if (status !== filters.status) return false;
+      }
+
+      if (q) {
+        const matches = [
+          x.id,
+          x.type,
+          x.propertyId,
+          propertyLabel.get(x.propertyId),
+          x.tenantId,
+          x.tenantId ? tenantLabel.get(x.tenantId) : '',
+          x.landlordId,
+          x.landlordId ? landlordLabel.get(x.landlordId) : '',
+          toYmd(x.bookingDate),
+          startYmd,
+          endYmd,
+          x.monthlyRentWithBills,
+          x.monthlyRentWithoutBills,
+          x.billsIncludedAmount,
+          x.depositAmount,
+          x.depositDays,
+          toYmd(x.depositReturnDate),
+          x.adminFeeAmount,
+          x.registrationTaxAmount,
+          x.poweredBy,
+          x.piumone,
+          x.foundThrough,
+          x.notes,
+        ].some((value) => String(value ?? '').toLowerCase().includes(q));
+
+        if (!matches) return false;
+      }
+
+      return true;
+    });
+  }, [items, filters, landlordLabel, propertyLabel, tenantLabel]);
+
+  const sortedItems = useMemo(() => {
+    const dir = sortDir === 'asc' ? 1 : -1;
+    const arr = [...filteredItems];
+
+    arr.sort((a, b) => {
+      if (sortKey === 'rent') {
+        return (Number(a.monthlyRentWithBills ?? 0) - Number(b.monthlyRentWithBills ?? 0)) * dir;
+      }
+
+      const av =
+        sortKey === 'startDate'
+          ? toYmd(a.startDate)
+          : sortKey === 'endDate'
+            ? toYmd(a.endDate)
+            : toYmd(a.bookingDate);
+      const bv =
+        sortKey === 'startDate'
+          ? toYmd(b.startDate)
+          : sortKey === 'endDate'
+            ? toYmd(b.endDate)
+            : toYmd(b.bookingDate);
+
+      return (av < bv ? -1 : av > bv ? 1 : 0) * dir;
+    });
+
+    return arr;
+  }, [filteredItems, sortKey, sortDir]);
+
+  const clearFilters = () => {
+    setFilters({
+      q: '',
+      type: '',
+      propertyId: '',
+      tenantId: '',
+      landlordId: '',
+      status: '',
+      startMonth: '',
+      endMonth: '',
+    });
+    setSortKey('startDate');
+    setSortDir('desc');
+  };
 
   const tabClass = (tab: 'list' | 'create') =>
     `rounded-lg px-4 py-2 text-sm font-semibold transition ${
@@ -995,15 +1093,169 @@ export default function LeasesPage() {
 
         {activeTab === 'list' && (
           <>
-            <div className="surface-card p-5 space-y-3">
-              <Field label="Ricerca">
-                <Input
-                  value={searchQuery}
-                  onChange={(e: ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
-                  placeholder="Cerca per property, tenant, landlord, date, importi, id..."
+            <div className="surface-card p-5 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-medium text-slate-800">Ricerca contratti</div>
+                  <div className="text-xs text-slate-500">
+                    Filtra per soggetto, property, stato temporale e date del contratto.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={clearFilters}
                   disabled={busy}
-                />
-              </Field>
+                  className="btn-secondary text-sm"
+                >
+                  Clear filters
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <Field label="Search">
+                  <Input
+                    value={filters.q}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                      setFilters((prev) => ({ ...prev, q: e.target.value }))
+                    }
+                    placeholder="property, tenant, landlord, id, note, importi..."
+                    disabled={busy}
+                  />
+                </Field>
+
+                <Field label="Type">
+                  <Select
+                    value={filters.type}
+                    onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+                      setFilters((prev) => ({ ...prev, type: e.target.value as '' | LeaseType }))
+                    }
+                    disabled={busy}
+                  >
+                    <option value="">(all)</option>
+                    <option value="TENANT">TENANT</option>
+                    <option value="LANDLORD">LANDLORD</option>
+                  </Select>
+                </Field>
+
+                <Field label="Property">
+                  <Select
+                    value={filters.propertyId}
+                    onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+                      setFilters((prev) => ({ ...prev, propertyId: e.target.value }))
+                    }
+                    disabled={busy}
+                  >
+                    <option value="">(all)</option>
+                    {properties.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {propertyLabel.get(p.id) ?? p.id}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+
+                <Field label="Tenant">
+                  <Select
+                    value={filters.tenantId}
+                    onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+                      setFilters((prev) => ({ ...prev, tenantId: e.target.value }))
+                    }
+                    disabled={busy}
+                  >
+                    <option value="">(all)</option>
+                    {tenants.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {tenantLabel.get(t.id) ?? t.id}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+
+                <Field label="Landlord">
+                  <Select
+                    value={filters.landlordId}
+                    onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+                      setFilters((prev) => ({ ...prev, landlordId: e.target.value }))
+                    }
+                    disabled={busy}
+                  >
+                    <option value="">(all)</option>
+                    {landlords.map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {landlordLabel.get(l.id) ?? l.id}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+
+                <Field label="Status">
+                  <Select
+                    value={filters.status}
+                    onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+                      setFilters((prev) => ({ ...prev, status: e.target.value as LeaseStatusFilter }))
+                    }
+                    disabled={busy}
+                  >
+                    <option value="">(all)</option>
+                    <option value="ACTIVE">ACTIVE</option>
+                    <option value="PAST">PAST</option>
+                    <option value="FUTURE">FUTURE</option>
+                  </Select>
+                </Field>
+
+                <Field label="Start month (YYYY-MM)">
+                  <Input
+                    value={filters.startMonth}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                      setFilters((prev) => ({ ...prev, startMonth: e.target.value }))
+                    }
+                    placeholder="2026-09"
+                    disabled={busy}
+                  />
+                </Field>
+
+                <Field label="End month (YYYY-MM)">
+                  <Input
+                    value={filters.endMonth}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                      setFilters((prev) => ({ ...prev, endMonth: e.target.value }))
+                    }
+                    placeholder="2027-02"
+                    disabled={busy}
+                  />
+                </Field>
+
+                <Field label="Sort">
+                  <div className="flex gap-2">
+                    <Select
+                      value={sortKey}
+                      onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+                        setSortKey(e.target.value as LeaseSortKey)
+                      }
+                      disabled={busy}
+                    >
+                      <option value="startDate">Start date</option>
+                      <option value="endDate">End date</option>
+                      <option value="bookingDate">Booking date</option>
+                      <option value="rent">Monthly rent</option>
+                    </Select>
+                    <Select
+                      value={sortDir}
+                      onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+                        setSortDir(e.target.value as LeaseSortDir)
+                      }
+                      disabled={busy}
+                    >
+                      <option value="desc">Desc</option>
+                      <option value="asc">Asc</option>
+                    </Select>
+                  </div>
+                </Field>
+              </div>
+
+              <div className="text-xs text-slate-500">
+                Mostrati: {sortedItems.length} / {items.length}
+              </div>
             </div>
 
         <div className="surface-card p-5">
@@ -1013,11 +1265,11 @@ export default function LeasesPage() {
             <div>Caricamento...</div>
           ) : items.length === 0 ? (
             <div className="text-sm text-slate-500">Nessun contratto.</div>
-          ) : filteredItems.length === 0 ? (
+          ) : sortedItems.length === 0 ? (
             <div className="text-sm text-slate-500">Nessun contratto corrisponde alla ricerca.</div>
           ) : (
             <div className="space-y-2">
-              {filteredItems.map((x) => {
+              {sortedItems.map((x) => {
                 const docsOpen = openDocsLeaseId === x.id;
                 const isEditingThis = editingLeaseId === x.id;
 

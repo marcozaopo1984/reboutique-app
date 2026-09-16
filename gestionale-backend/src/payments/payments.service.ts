@@ -83,8 +83,13 @@ export class PaymentsService {
     return { id: snap.id, ...(snap.data() as any) };
   }
 
-  async findAll(holderId: string) {
-    const snap = await this.paymentsCollection(holderId).get();
+  async findAll(holderId: string, openOnly = false) {
+    const col = this.paymentsCollection(holderId);
+
+    const snap = openOnly
+      ? await col.where('status', 'in', ['PLANNED', 'OVERDUE']).get()
+      : await col.get();
+
     return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
   }
 

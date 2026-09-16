@@ -7,6 +7,7 @@ import {
   Delete,
   Param,
   Req,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
@@ -35,8 +36,9 @@ export class PaymentsController {
 
   @Get()
   @Roles('HOLDER')
-  findAll(@Req() req) {
-    return this.paymentsService.findAll(this.getHolderId(req));
+  findAll(@Req() req, @Query('openOnly') openOnly?: string) {
+    const onlyOpen = ['1', 'true', 'yes'].includes(String(openOnly ?? '').toLowerCase());
+    return this.paymentsService.findAll(this.getHolderId(req), onlyOpen);
   }
 
   @Patch(':id')

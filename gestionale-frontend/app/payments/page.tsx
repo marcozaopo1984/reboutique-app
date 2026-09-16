@@ -67,6 +67,7 @@ type Filters = {
   month: string;
   onlyManual: boolean;
   onlyOverdueComputed: boolean;
+  includePaid: boolean;
 };
 
 const cleanStr = (s: string) => (s ?? '').trim();
@@ -175,6 +176,7 @@ function PaymentsContent() {
     month: '',
     onlyManual: false,
     onlyOverdueComputed: false,
+    includePaid: false,
   });
 
   const [sortKey, setSortKey] = useState<SortKey>('dueDate');
@@ -193,6 +195,7 @@ function PaymentsContent() {
     const month = searchParams.get('month') ?? '';
     const onlyManual = parseBool(searchParams.get('onlyManual'));
     const onlyOverdueComputed = parseBool(searchParams.get('onlyOverdueComputed'));
+    const includePaid = parseBool(searchParams.get('includePaid'));
 
     const sk = pickSortKey(searchParams.get('sortKey'));
     const sd = pickSortDir(searchParams.get('sortDir'));
@@ -207,6 +210,7 @@ function PaymentsContent() {
       month,
       onlyManual,
       onlyOverdueComputed,
+      includePaid,
     });
     setSortKey(sk);
     setSortDir(sd);
@@ -227,6 +231,7 @@ function PaymentsContent() {
 
     if (filters.onlyManual) sp.set('onlyManual', '1');
     if (filters.onlyOverdueComputed) sp.set('onlyOverdueComputed', '1');
+    if (filters.includePaid) sp.set('includePaid', '1');
 
     sp.set('sortKey', sortKey);
     sp.set('sortDir', sortDir);
@@ -267,6 +272,7 @@ function PaymentsContent() {
 
     if (filters.onlyManual) sp.set('onlyManual', '1');
     if (filters.onlyOverdueComputed) sp.set('onlyOverdueComputed', '1');
+    if (filters.includePaid) sp.set('includePaid', '1');
 
     sp.set('sortKey', sortKey);
     sp.set('sortDir', sortDir);
@@ -337,7 +343,7 @@ function PaymentsContent() {
     setError(null);
     try {
       const [paymentsRes, tenantsRes, landlordsRes, propertiesRes, leasesRes] = await Promise.all([
-        fetchWithAuth('/payments'),
+        fetchWithAuth(filters.includePaid ? '/payments' : '/payments?openOnly=true'),
         fetchWithAuth('/tenants'),
         fetchWithAuth('/landlords'),
         fetchWithAuth('/properties'),
@@ -357,8 +363,11 @@ function PaymentsContent() {
   };
 
   useEffect(() => {
-    loadAll();
-  }, []);
+    void loadAll();
+    // Reload lato server solo quando cambia la scelta di includere i record già pagati.
+    // Gli altri filtri restano client-side.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.includePaid]);
 
   const resetForm = () => {
     setEditingPaymentId(null);
@@ -568,9 +577,9 @@ function PaymentsContent() {
     for (const p of items) s.add(p.status ?? 'PLANNED');
     s.add('OVERDUE');
     s.add('PLANNED');
-    s.add('PAID');
+    if (filters.includePaid) s.add('PAID');
     return Array.from(s).sort(compareStr);
-  }, [items]);
+  }, [items, filters.includePaid]);
 
   const filtered = useMemo(() => {
     const q = cleanStr(filters.q).toLowerCase();
@@ -646,6 +655,7 @@ function PaymentsContent() {
       month: '',
       onlyManual: false,
       onlyOverdueComputed: false,
+      includePaid: false,
     });
   };
 
@@ -729,6 +739,12 @@ function PaymentsContent() {
               </button>
             </div>
           </div>
+
+          {!filters.includePaid ? (
+            <div className="text-xs text-slate-500">
+              Modalità veloce: dal server vengono caricati solo i payment ancora da segnare come pagati/incassati.
+            </div>
+          ) : null}
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <Field label="Search">
@@ -846,6 +862,22 @@ function PaymentsContent() {
                     disabled={busy}
                   />
                   Solo overdue (computed)
+                </label>
+
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={filters.includePaid}
+                    onChange={(e) =>
+                      setFilters((p) => ({
+                        ...p,
+                        includePaid: e.target.checked,
+                        status: e.target.checked ? p.status : p.status === 'PAID' ? '' : p.status,
+                      }))
+                    }
+                    disabled={busy || loading}
+                  />
+                  Includi già pagati/incassati (caricamento più lento)
                 </label>
               </div>
             </Field>

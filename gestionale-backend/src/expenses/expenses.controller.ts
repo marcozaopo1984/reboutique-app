@@ -7,6 +7,7 @@ import {
   Patch,
   Delete,
   Req,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 
@@ -36,8 +37,9 @@ export class ExpensesController {
 
   @Get()
   @Roles('HOLDER')
-  findAll(@Req() req) {
-    return this.expensesService.findAll(this.getHolderId(req));
+  findAll(@Req() req, @Query('openOnly') openOnly?: string) {
+    const onlyOpen = ['1', 'true', 'yes'].includes(String(openOnly ?? '').toLowerCase());
+    return this.expensesService.findAll(this.getHolderId(req), onlyOpen);
   }
 
   @Get(':id')

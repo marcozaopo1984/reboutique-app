@@ -85,6 +85,7 @@ type Filters = {
   status: string;
   month: string;
   onlyOverdueComputed: boolean;
+  includePaid: boolean;
 };
 
 const cleanStr = (s: string) => (s ?? '').trim();
@@ -197,6 +198,7 @@ function ExpensesContent() {
     status: '',
     month: '',
     onlyOverdueComputed: false,
+    includePaid: false,
   });
 
   const [sortKey, setSortKey] = useState<SortKey>('costDate');
@@ -266,6 +268,7 @@ function ExpensesContent() {
     const status = searchParams.get('status') ?? '';
     const month = searchParams.get('month') ?? '';
     const onlyOverdueComputed = parseBool(searchParams.get('onlyOverdueComputed'));
+    const includePaid = parseBool(searchParams.get('includePaid'));
 
     const sk = pickSortKey(searchParams.get('sortKey'));
     const sd = pickSortDir(searchParams.get('sortDir'));
@@ -279,6 +282,7 @@ function ExpensesContent() {
       status,
       month,
       onlyOverdueComputed,
+      includePaid,
     });
     setSortKey(sk);
     setSortDir(sd);
@@ -298,6 +302,7 @@ function ExpensesContent() {
     if (filters.month) sp.set('month', filters.month);
 
     if (filters.onlyOverdueComputed) sp.set('onlyOverdueComputed', '1');
+    if (filters.includePaid) sp.set('includePaid', '1');
 
     sp.set('sortKey', sortKey);
     sp.set('sortDir', sortDir);
@@ -337,6 +342,7 @@ function ExpensesContent() {
     if (filters.month) sp.set('month', filters.month);
 
     if (filters.onlyOverdueComputed) sp.set('onlyOverdueComputed', '1');
+    if (filters.includePaid) sp.set('includePaid', '1');
 
     sp.set('sortKey', sortKey);
     sp.set('sortDir', sortDir);
@@ -350,7 +356,7 @@ function ExpensesContent() {
     setError(null);
     try {
       const [expensesRes, tenantsRes, landlordsRes, leasesRes, propsRes] = await Promise.all([
-        fetchWithAuth('/expenses'),
+        fetchWithAuth(filters.includePaid ? '/expenses' : '/expenses?openOnly=true'),
         fetchWithAuth('/tenants'),
         fetchWithAuth('/landlords'),
         fetchWithAuth('/leases'),
@@ -370,8 +376,10 @@ function ExpensesContent() {
   };
 
   useEffect(() => {
-    loadAll();
-  }, []);
+    void loadAll();
+    // Reload lato server solo quando cambia la scelta di includere le spese già pagate.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.includePaid]);
 
   const resetForm = () => {
     setEditingExpenseId(null);
@@ -586,9 +594,9 @@ function ExpensesContent() {
     for (const e of items) s.add(String(e.status ?? 'PLANNED'));
     s.add('OVERDUE');
     s.add('PLANNED');
-    s.add('PAID');
+    if (filters.includePaid) s.add('PAID');
     return Array.from(s).sort(compareStr);
-  }, [items]);
+  }, [items, filters.includePaid]);
 
   const filtered = useMemo(() => {
     const q = cleanStr(filters.q).toLowerCase();
@@ -667,6 +675,7 @@ function ExpensesContent() {
       status: '',
       month: '',
       onlyOverdueComputed: false,
+      includePaid: false,
     });
   };
 
@@ -746,6 +755,12 @@ function ExpensesContent() {
               </button>
             </div>
           </div>
+
+          {!filters.includePaid ? (
+            <div className="text-xs text-slate-500">
+              Modalità veloce: dal server vengono caricate solo le spese ancora da segnare come pagate.
+            </div>
+          ) : null}
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <Field label="Search">
@@ -855,6 +870,22 @@ function ExpensesContent() {
                     disabled={busy}
                   />
                   Solo overdue (computed)
+                </label>
+
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={filters.includePaid}
+                    onChange={(e) =>
+                      setFilters((p) => ({
+                        ...p,
+                        includePaid: e.target.checked,
+                        status: e.target.checked ? p.status : p.status === 'PAID' ? '' : p.status,
+                      }))
+                    }
+                    disabled={busy || loading}
+                  />
+                  Includi già pagate (caricamento più lento)
                 </label>
               </div>
             </Field>
