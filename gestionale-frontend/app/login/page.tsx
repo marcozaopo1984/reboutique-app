@@ -10,6 +10,7 @@ import {
   signInWithPopup,
   GoogleAuthProvider,
   createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
 } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { fetchWithAuth } from '@/lib/apiClient';
@@ -26,6 +27,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [user, setUser] = useState<User | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [mode, setMode] = useState<'login' | 'register'>('login'); // 👈 login vs registrazione tenant
   const router = useRouter();
 
@@ -54,6 +56,7 @@ export default function LoginPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+    setNotice(null);
     try {
       if (mode === 'login') {
         // LOGIN email/password
@@ -67,6 +70,24 @@ export default function LoginPage() {
       await goToDashboardByRole();
     } catch (err: any) {
       setError(err.message ?? 'Login/registrazione error');
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    setError(null);
+    setNotice(null);
+
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
+      setError('Inserisci prima il tuo indirizzo email.');
+      return;
+    }
+
+    try {
+      await sendPasswordResetEmail(auth, normalizedEmail);
+      setNotice('Email di reimpostazione password inviata. Controlla la tua casella di posta.');
+    } catch (err: any) {
+      setError(err.message ?? 'Errore durante l’invio dell’email di reimpostazione');
     }
   };
 
@@ -156,6 +177,7 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
               />
               {error && <p className="text-red-500 text-sm">{error}</p>}
+              {notice && <p className="text-emerald-700 text-sm">{notice}</p>}
               <button
                 type="submit"
                 className="w-full border rounded-md py-2"
@@ -164,6 +186,16 @@ export default function LoginPage() {
                   ? 'Login with email'
                   : 'Register as tenant with email'}
               </button>
+
+              {mode === 'login' && (
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  className="w-full text-sm text-slate-600 underline underline-offset-4"
+                >
+                  Password dimenticata?
+                </button>
+              )}
             </form>
 
             <button
