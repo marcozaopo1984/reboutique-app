@@ -445,8 +445,55 @@ export class LeasesService {
     const ref = this.leasesCollection(holderId).doc(leaseId);
     const doc = await ref.get();
     if (!doc.exists) throw new NotFoundException(`Lease ${leaseId} not found`);
+    // Delete children first: on failure the lease remains available for retry.
+    // Match the explicit relation, including manual and already paid cashflows.
+    const payments = await this.removeLeaseCashflows(this.paymentsCollection(holderId), leaseId);
+    const expenses = await this.removeLeaseCashflows(this.expensesCollection(holderId), leaseId);
+    await this.removeDocumentFiles(ref);
     await ref.delete();
-    return { success: true };
+    return { success: true, deletedPayments: payments, deletedExpenses: expenses };
+  }
+
+  private async removeLeaseCashflows(
+    collection: admin.firestore.CollectionReference,
+    leaseId: string,
+  ): Promise<number> {
+    let deleted = 0;
+    while (true) {
+      const snapshot = await collection.where('leaseId', '==', leaseId).limit(100).get();
+      if (snapshot.empty) return deleted;
+
+      // Each page is committed before fetching the next, avoiding Firestore's
+      // batch limit and retaining the parent metadata if attachment cleanup fails.
+      for (const cashflow of snapshot.docs) {
+        await this.removeDocumentFiles(cashflow.ref);
+      }
+      const batch = this.firebaseService.firestore.batch();
+      for (const cashflow of snapshot.docs) batch.delete(cashflow.ref);
+      await batch.commit();
+      deleted += snapshot.size;
+    }
+  }
+
+  private async removeDocumentFiles(ref: admin.firestore.DocumentReference): Promise<void> {
+    while (true) {
+      const snapshot = await ref.collection('files').limit(100).get();
+      if (snapshot.empty) return;
+
+      // Storage and Firestore cannot share a transaction. Keep file metadata
+      // until Storage succeeds; ignore missing objects so retries are safe.
+      for (const file of snapshot.docs) {
+        const data = file.data();
+        const storagePath = data?.storagePath ?? data?.path;
+        if (storagePath) {
+          await this.firebaseService.admin.storage().bucket().file(storagePath)
+            .delete({ ignoreNotFound: true });
+        }
+      }
+      const batch = this.firebaseService.firestore.batch();
+      for (const file of snapshot.docs) batch.delete(file.ref);
+      await batch.commit();
+    }
   }
 
   private monthKey(d: Date): string {

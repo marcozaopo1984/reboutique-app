@@ -599,6 +599,14 @@ export default function LeasesPage() {
   };
 
   const remove = async (id: string) => {
+    if (busy) return;
+    if (!window.confirm(
+      `Eliminare definitivamente il contratto ${id}?\n\n` +
+      'Saranno eliminati tutti i payments e gli expenses collegati, inclusi quelli manuali e già pagati, ' +
+      'e tutti i documenti allegati al contratto e ai relativi cashflow.\n\n' +
+      "L'operazione non è annullabile.",
+    )) return;
+
     setError(null);
     setBusy(true);
     try {
@@ -609,7 +617,10 @@ export default function LeasesPage() {
       }
       await loadAll();
     } catch (e: any) {
-      setError(e?.message ?? 'Errore eliminazione lease');
+      setError(
+        (e?.message ?? 'Errore eliminazione contratto') +
+        ' La cancellazione potrebbe essere parziale: ricarica la lista e, se il contratto è ancora presente, riprova.',
+      );
     } finally {
       setBusy(false);
     }
