@@ -8,7 +8,32 @@ import { Field, Input, Select } from '@/components/form/Field';
 
 type LeaseType = 'TENANT' | 'LANDLORD';
 
-type Tenant = { id: string; firstName?: string; lastName?: string };
+type Tenant = { id: string; firstName?: string; lastName?: string; email?: string; phone?: string };
+
+const normalizeTenantSearch = (value: string) =>
+  value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('it').trim();
+
+const tenantOptionLabel = (tenant: Tenant) => {
+  const name = `${tenant.firstName ?? ''} ${tenant.lastName ?? ''}`.trim();
+  return [name, tenant.email, tenant.phone, `ID: ${tenant.id}`].filter(Boolean).join(' · ');
+};
+
+const filterTenants = (tenants: Tenant[], query: string) => {
+  const tokens = normalizeTenantSearch(query).split(/\s+/).filter(Boolean);
+  const phoneQuery = query.replace(/\D/g, '');
+  const isPhoneQuery = phoneQuery.length > 0 && /^[+\d\s().-]+$/.test(query.trim());
+  return tenants.filter((tenant) => {
+    const text = normalizeTenantSearch(
+      [tenant.firstName, tenant.lastName, tenant.email, tenant.phone, tenant.id].filter(Boolean).join(' '),
+    );
+    return tokens.every((token) => text.includes(token)) ||
+      (isPhoneQuery && (tenant.phone ?? '').replace(/\D/g, '').includes(phoneQuery));
+  }).sort((a, b) => {
+    const aName = `${a.lastName ?? ''} ${a.firstName ?? ''}`.trim() || a.id;
+    const bName = `${b.lastName ?? ''} ${b.firstName ?? ''}`.trim() || b.id;
+    return aName.localeCompare(bName, 'it', { sensitivity: 'base' }) || a.id.localeCompare(b.id);
+  });
+};
 type Landlord = { id: string; firstName?: string; lastName?: string; name?: string };
 type Property = { id: string; code?: string; name?: string; type?: 'APARTMENT' | 'ROOM' | 'BED' | string };
 
@@ -282,6 +307,7 @@ const leaseToForm = (x: Lease): CreateLeaseForm => {
 export default function LeasesPage() {
   const [items, setItems] = useState<Lease[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [tenantSearch, setTenantSearch] = useState('');
   const [landlords, setLandlords] = useState<Landlord[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
 
@@ -320,6 +346,12 @@ export default function LeasesPage() {
     }
     return m;
   }, [tenants]);
+
+  const matchingTenants = useMemo(() => filterTenants(tenants, tenantSearch), [tenants, tenantSearch]);
+  const selectedTenant = tenants.find((tenant) => tenant.id === form.tenantId);
+  // Keep the saved selection visible even when it does not match the search.
+  const selectedTenantOutsideSearch = !!form.tenantId &&
+    !matchingTenants.some((tenant) => tenant.id === form.tenantId);
 
   const landlordLabel = useMemo(() => {
     const m = new Map<string, string>();
@@ -483,6 +515,7 @@ export default function LeasesPage() {
   }, []);
 
   const resetForm = () => {
+    setTenantSearch('');
     setEditingLeaseId(null);
     setForm(emptyForm());
   };
@@ -588,6 +621,7 @@ export default function LeasesPage() {
   };
 
   const startEdit = (lease: Lease) => {
+    setTenantSearch('');
     setError(null);
     setEditingLeaseId(lease.id);
     setForm(leaseToForm(lease));
@@ -700,6 +734,7 @@ export default function LeasesPage() {
                 value={form.type}
                 onChange={(e: ChangeEvent<HTMLSelectElement>) => {
                   const v = e.target.value as LeaseType;
+                  setTenantSearch('');
                   setForm((prev) => ({
                     ...prev,
                     ...maybeSyncDepositReturnDate(prev, {
@@ -725,18 +760,58 @@ export default function LeasesPage() {
 
             {form.type === 'TENANT' ? (
               <Field label="Tenant" required>
-                <Select
-                  value={form.tenantId}
-                  onChange={(e: ChangeEvent<HTMLSelectElement>) => onChange('tenantId', e.target.value)}
-                  disabled={busy}
-                >
-                  <option value="">Seleziona tenant *</option>
-                  {tenants.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {tenantLabel.get(t.id) ?? t.id}
-                    </option>
-                  ))}
-                </Select>
+                <div className="space-y-2 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="search"
+                      aria-label="Cerca tenant"
+                      aria-controls="lease-tenant-select"
+                      placeholder="Nome, cognome, email, telefono o ID"
+                      value={tenantSearch}
+                      onChange={(e: ChangeEvent<HTMLInputElement>) => setTenantSearch(e.target.value)}
+                      disabled={busy || loading}
+                    />
+                    {tenantSearch && (
+                      <button
+                        type="button"
+                        className="btn-secondary text-xs shrink-0"
+                        onClick={() => setTenantSearch('')}
+                        disabled={busy || loading}
+                        aria-label="Cancella ricerca tenant"
+                      >
+                        Azzera
+                      </button>
+                    )}
+                  </div>
+                  <Select
+                    id="lease-tenant-select"
+                    aria-label="Seleziona tenant"
+                    aria-describedby="lease-tenant-search-status"
+                    value={form.tenantId}
+                    onChange={(e: ChangeEvent<HTMLSelectElement>) => onChange('tenantId', e.target.value)}
+                    disabled={busy || loading}
+                  >
+                    <option value="">Seleziona tenant *</option>
+                    {selectedTenantOutsideSearch && (
+                      <option value={form.tenantId}>
+                        {selectedTenant ? tenantOptionLabel(selectedTenant) : form.tenantId} (selezionato)
+                      </option>
+                    )}
+                    {matchingTenants.map((tenant) => (
+                      <option key={tenant.id} value={tenant.id}>
+                        {tenantOptionLabel(tenant)}
+                      </option>
+                    ))}
+                  </Select>
+                  <p id="lease-tenant-search-status" className="text-xs text-slate-500" role="status">
+                    {loading ? 'Caricamento tenant…' : tenants.length === 0
+                      ? 'Nessun tenant disponibile.'
+                      : matchingTenants.length === 0
+                        ? 'Nessun risultato. Modifica o azzera la ricerca.'
+                        : `${matchingTenants.length} di ${tenants.length} tenant. Scegli dal menu.`}
+                    {selectedTenantOutsideSearch && ' Il tenant selezionato è mantenuto anche se non corrisponde alla ricerca.'}
+                  </p>
+                </div>
               </Field>
             ) : (
               <Field label="Landlord" required>
