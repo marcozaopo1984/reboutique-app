@@ -40,6 +40,7 @@ type Payment = {
 
   kind: PaymentKind;
   status: PaymentStatus;
+  notes?: string;
 };
 
 type CreatePaymentForm = {
@@ -55,6 +56,7 @@ type CreatePaymentForm = {
   amount: string;
   kind: PaymentKind;
   status: PaymentStatus;
+  notes: string;
 };
 
 type SortKey = 'dueDate' | 'amount' | 'status';
@@ -167,6 +169,7 @@ function PaymentsContent() {
     amount: '',
     kind: 'RENT',
     status: 'PLANNED',
+    notes: '',
   });
 
   const [filters, setFilters] = useState<Filters>({
@@ -389,6 +392,7 @@ function PaymentsContent() {
       amount: '',
       kind: 'RENT',
       status: 'PLANNED',
+      notes: '',
     });
   };
 
@@ -405,6 +409,7 @@ function PaymentsContent() {
       amount: payment.amount == null ? '' : String(payment.amount),
       kind: (payment.kind ?? 'RENT') as PaymentKind,
       status: (payment.status ?? 'PLANNED') as PaymentStatus,
+      notes: payment.notes ?? '',
     });
     setActiveTab('create');
 
@@ -474,6 +479,7 @@ function PaymentsContent() {
 
       kind: form.kind,
       status: form.status,
+      notes: cleanStr(form.notes),
     };
 
     setBusy(true);
@@ -612,6 +618,7 @@ function PaymentsContent() {
           p.leaseId ?? '',
           actorText,
           propText,
+          p.notes ?? '',
           p.kind ?? '',
           p.status ?? '',
           p._actorType ?? '',
@@ -1032,6 +1039,16 @@ function PaymentsContent() {
                 <option value="OVERDUE">In ritardo</option>
               </Select>
             </Field>
+            <Field label="Note">
+              <textarea
+                value={form.notes}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => onChange('notes', e.target.value)}
+                placeholder="Commenti o note libere sul pagamento"
+                disabled={busy}
+                rows={4}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500 disabled:bg-slate-100 disabled:text-slate-500"
+              />
+            </Field>
           </div>
 
           <div className="flex items-center gap-3">
@@ -1126,6 +1143,8 @@ function PaymentsContent() {
                           {paid ? ` · Paid: ${formatDateIT(paid)}` : ''}
                           {p.leaseId ? ` · leaseId: ${p.leaseId}` : ''}
                         </div>
+
+                        {p.notes && <div className="text-xs text-slate-600 mt-1 whitespace-pre-wrap break-words">Note: {p.notes}</div>}
 
                         <div className="text-[11px] text-slate-400 mt-1">id: {p.id}</div>
                       </div>

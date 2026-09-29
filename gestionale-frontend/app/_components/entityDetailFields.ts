@@ -451,6 +451,10 @@ export const detailFields: Record<EntityKind, DetailField[]> = {
       "key": "_actorName",
       "label": "Soggetto associato",
       "optional": true
+    },
+    {
+      "key": "notes",
+      "label": "Note"
     }
   ],
   "expenses": [

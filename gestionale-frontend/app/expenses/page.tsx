@@ -467,7 +467,7 @@ function ExpensesContent() {
       status: form.status || 'PLANNED',
       paidDate: resolvedPaidDate,
 
-      notes: cleanStr(form.notes) || undefined,
+      notes: cleanStr(form.notes),
     };
 
     setBusy(true);
@@ -1068,8 +1068,15 @@ function ExpensesContent() {
               <Input value={form.description} onChange={handleInput('description')} placeholder="Breve descrizione..." disabled={busy} />
             </Field>
 
-            <Field label="Notes">
-              <Input value={form.notes} onChange={handleInput('notes')} placeholder="Note interne..." disabled={busy} />
+            <Field label="Note">
+              <textarea
+                value={form.notes}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => onChange('notes', e.target.value)}
+                placeholder="Commenti o note libere sul cashflow di spesa"
+                disabled={busy}
+                rows={4}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500 disabled:bg-slate-100 disabled:text-slate-500"
+              />
             </Field>
           </div>
 
@@ -1162,7 +1169,7 @@ function ExpensesContent() {
                         </div>
 
                         {x.description && <div className="text-xs text-slate-500 mt-1">Desc: {x.description}</div>}
-                        {x.notes && <div className="text-xs text-slate-500 mt-1">Note: {x.notes}</div>}
+                        {x.notes && <div className="text-xs text-slate-500 mt-1 whitespace-pre-wrap break-words">Note: {x.notes}</div>}
 
                         <div className="text-[11px] text-slate-400 mt-1">id: {x.id}</div>
                       </div>
