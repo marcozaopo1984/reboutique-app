@@ -1,5 +1,7 @@
 'use client';
 
+import { usePageBack } from '../_components/AppNavigation';
+
 import { useEffect, useMemo, useState } from 'react';
 import { fetchWithAuth } from '@/lib/apiClient';
 import EntityDocuments from '@/components/EntityDocuments';
@@ -174,6 +176,7 @@ export default function PropertiesPage() {
 
   const [form, setForm] = useState<CreatePropertyForm>(emptyForm());
   const [activeTab, setActiveTab] = useState<'list' | 'create'>('list');
+  usePageBack(activeTab === 'create', () => setActiveTab('list'), busy);
   const [searchQuery, setSearchQuery] = useState('');
 
   const filteredItems = useMemo(() => {

@@ -1,5 +1,7 @@
 'use client';
 
+import { usePageBack } from '../_components/AppNavigation';
+
 import { ChangeEvent, useEffect, useMemo, useState } from 'react';
 import { fetchWithAuth } from '@/lib/apiClient';
 import { formatDateIT } from '@/lib/dateFormat';
@@ -320,6 +322,7 @@ export default function LeasesPage() {
 
   const [form, setForm] = useState<CreateLeaseForm>(emptyForm());
   const [activeTab, setActiveTab] = useState<'list' | 'create'>('list');
+  usePageBack(activeTab === 'create', () => setActiveTab('list'), busy);
 
   const [filters, setFilters] = useState<LeaseFilters>({
     q: '',

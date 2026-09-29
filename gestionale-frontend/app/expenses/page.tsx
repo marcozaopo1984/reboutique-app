@@ -1,5 +1,7 @@
 'use client';
 
+import { usePageBack } from '../_components/AppNavigation';
+
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { fetchWithAuth } from '@/lib/apiClient';
@@ -204,6 +206,7 @@ function ExpensesContent() {
   const [sortKey, setSortKey] = useState<SortKey>('costDate');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [activeTab, setActiveTab] = useState<'list' | 'create'>('list');
+  usePageBack(activeTab === 'create', () => setActiveTab('list'), busy);
 
   const onChange = (key: keyof CreateExpenseForm, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));

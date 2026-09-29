@@ -1,5 +1,7 @@
 'use client';
 
+import { usePageBack } from '../_components/AppNavigation';
+
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { fetchWithAuth } from '@/lib/apiClient';
@@ -182,6 +184,7 @@ function PaymentsContent() {
   const [sortKey, setSortKey] = useState<SortKey>('dueDate');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [activeTab, setActiveTab] = useState<'list' | 'create'>('list');
+  usePageBack(activeTab === 'create', () => setActiveTab('list'), busy);
 
   useEffect(() => {
     if (didInitFromUrl.current) return;

@@ -1,5 +1,7 @@
 'use client';
 
+import { usePageBack } from '../_components/AppNavigation';
+
 import { useEffect, useMemo, useState } from 'react';
 import { fetchWithAuth } from '@/lib/apiClient';
 import { formatDateIT } from '@/lib/dateFormat';
@@ -142,6 +144,7 @@ export default function TenantsPage() {
 
   const [form, setForm] = useState<CreateTenantForm>(emptyForm());
   const [activeTab, setActiveTab] = useState<'list' | 'create'>('list');
+  usePageBack(activeTab === 'create', () => setActiveTab('list'), busy);
   const [searchQuery, setSearchQuery] = useState('');
 
   const onChange = (key: keyof CreateTenantForm, value: any) => {

@@ -1,5 +1,7 @@
 'use client';
 
+import { usePageBack } from '../_components/AppNavigation';
+
 import { useEffect, useMemo, useState } from 'react';
 import { fetchWithAuth } from '@/lib/apiClient';
 import EntityDocuments from '@/components/EntityDocuments';
@@ -91,6 +93,7 @@ export default function LandlordsPage() {
 
   const [form, setForm] = useState<CreateLandlordForm>(emptyForm());
   const [activeTab, setActiveTab] = useState<'list' | 'create'>('list');
+  usePageBack(activeTab === 'create', () => setActiveTab('list'), busy);
   const [searchQuery, setSearchQuery] = useState('');
 
   const onChange = (key: keyof CreateLandlordForm, value: any) => {
