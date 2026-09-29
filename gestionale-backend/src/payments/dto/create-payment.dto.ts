@@ -66,4 +66,7 @@ export class CreatePaymentDto {
   @IsOptional()
   @IsString()
   period?: string;
+  @IsOptional()
+  @IsString()
+  notes?: string;
 }

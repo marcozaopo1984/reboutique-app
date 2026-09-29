@@ -60,4 +60,7 @@ export class UpdatePaymentDto {
   @IsOptional()
   @IsString()
   period?: string;
+  @IsOptional()
+  @IsString()
+  notes?: string;
 }

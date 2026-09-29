@@ -71,6 +71,7 @@ export class PaymentsService {
 
     const data = this.clean({
       ...dto,
+      notes: dto.notes?.trim(),
       apartmentId,
       status: dto.status ?? 'PLANNED',
       currency: dto.currency ?? 'EUR',
@@ -111,6 +112,7 @@ export class PaymentsService {
 
     const data = this.clean({
       ...dto,
+      notes: dto.notes?.trim(),
       apartmentId,
       updatedAt: new Date(),
     });
