@@ -119,7 +119,7 @@ type CreateLeaseForm = {
 };
 
 type LeaseStatusFilter = '' | 'ACTIVE' | 'PAST' | 'FUTURE';
-type LeaseSortKey = 'startDate' | 'endDate' | 'bookingDate' | 'rent';
+type LeaseSortKey = 'property' | 'startDate' | 'endDate' | 'bookingDate' | 'rent';
 type LeaseSortDir = 'asc' | 'desc';
 
 type LeaseFilters = {
@@ -372,6 +372,12 @@ export default function LeasesPage() {
     return m;
   }, [properties]);
 
+  const propertySortCode = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of properties) m.set(p.id, p.code?.trim() || p.id);
+    return m;
+  }, [properties]);
+
   const propertiesApartments = useMemo(
     () => properties.filter((p) => p.type === 'APARTMENT'),
     [properties],
@@ -443,6 +449,11 @@ export default function LeasesPage() {
     const arr = [...filteredItems];
 
     arr.sort((a, b) => {
+      if (sortKey === 'property') {
+        const aCode = propertySortCode.get(a.propertyId) ?? a.propertyId;
+        const bCode = propertySortCode.get(b.propertyId) ?? b.propertyId;
+        return aCode.localeCompare(bCode, 'it', { numeric: true, sensitivity: 'base' }) * dir;
+      }
       if (sortKey === 'rent') {
         return (Number(a.monthlyRentWithBills ?? 0) - Number(b.monthlyRentWithBills ?? 0)) * dir;
       }
@@ -464,7 +475,7 @@ export default function LeasesPage() {
     });
 
     return arr;
-  }, [filteredItems, sortKey, sortDir]);
+  }, [filteredItems, sortKey, sortDir, propertySortCode]);
 
   const clearFilters = () => {
     setFilters({
@@ -1315,11 +1326,14 @@ export default function LeasesPage() {
                   <div className="flex gap-2">
                     <Select
                       value={sortKey}
-                      onChange={(e: ChangeEvent<HTMLSelectElement>) =>
-                        setSortKey(e.target.value as LeaseSortKey)
-                      }
+                      onChange={(e: ChangeEvent<HTMLSelectElement>) => {
+                        const key = e.target.value as LeaseSortKey;
+                        setSortKey(key);
+                        if (key === 'property') setSortDir('asc');
+                      }}
                       disabled={busy}
                     >
+                      <option value="property">Proprietà</option>
                       <option value="startDate">Start date</option>
                       <option value="endDate">End date</option>
                       <option value="bookingDate">Booking date</option>
@@ -1332,8 +1346,8 @@ export default function LeasesPage() {
                       }
                       disabled={busy}
                     >
-                      <option value="desc">Desc</option>
-                      <option value="asc">Asc</option>
+                      <option value="desc">{sortKey === 'property' ? 'Z–A' : 'Desc'}</option>
+                      <option value="asc">{sortKey === 'property' ? 'A–Z' : 'Asc'}</option>
                     </Select>
                   </div>
                 </Field>
