@@ -1,6 +1,7 @@
 'use client';
 
 import { usePageBack } from '../_components/AppNavigation';
+import EntityDetails, { useEntityDetails } from '../_components/EntityDetails';
 
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -184,7 +185,11 @@ function PaymentsContent() {
   const [sortKey, setSortKey] = useState<SortKey>('dueDate');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [activeTab, setActiveTab] = useState<'list' | 'create'>('list');
-  usePageBack(activeTab === 'create', () => setActiveTab('list'), busy);
+  const details = useEntityDetails<Payment>();
+  usePageBack(!!details.selected || activeTab === 'create', () => {
+    if (details.selected) details.close();
+    else setActiveTab('list');
+  }, busy);
 
   useEffect(() => {
     if (didInitFromUrl.current) return;
@@ -671,7 +676,22 @@ function PaymentsContent() {
 
   return (
     <div className="app-shell">
-      <div className="app-container space-y-6">
+      {details.selected && (
+        <EntityDetails
+          kind="payments"
+          item={details.selected}
+          labels={{ propertyId: propertyLabel, tenantId: tenantLabel, landlordId: landlordLabel, leaseId: leaseLabel }}
+          busy={busy}
+          onClose={details.close}
+          onEdit={() => {
+            const item = details.selected;
+            if (!item) return;
+            details.clear();
+            startEdit(item);
+          }}
+        />
+      )}
+      <div hidden={!!details.selected} className="app-container space-y-6">
         <header className="flex items-center justify-between">
           <div>
             <h1 className="page-title">Payments</h1>
@@ -1076,7 +1096,8 @@ function PaymentsContent() {
                 return (
                   <div
                     key={p.id}
-                    className={`border rounded-lg p-3 ${isEditingThis ? 'border-slate-800 bg-slate-50' : ''}`}
+                    {...details.cardProps(p, busy)}
+                    className={`cursor-pointer transition hover:border-slate-400 border rounded-lg p-3 ${isEditingThis ? 'border-slate-800 bg-slate-50' : ''}`}
                   >
                     <div className="flex justify-between gap-3">
                       <div className="min-w-0">
@@ -1121,6 +1142,16 @@ function PaymentsContent() {
                         )}
 
                         <button
+                          type="button"
+                          data-detail-open
+                          onClick={(event) => details.open(p, event.currentTarget)}
+                          disabled={busy}
+                          className="btn-secondary text-sm"
+                        >
+                          Dettagli
+                        </button>
+
+                        <button
                           onClick={() => startEdit(p)}
                           disabled={busy}
                           className="btn-secondary text-sm"
@@ -1147,7 +1178,7 @@ function PaymentsContent() {
                     </div>
 
                     {docsOpen && (
-                      <div className="mt-3">
+                      <div className="mt-3" data-detail-ignore>
                         <EntityDocuments
                           entityKind="payments"
                           entityId={p.id}

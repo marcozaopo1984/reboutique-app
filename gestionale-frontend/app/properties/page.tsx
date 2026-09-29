@@ -1,6 +1,7 @@
 'use client';
 
 import { usePageBack } from '../_components/AppNavigation';
+import EntityDetails, { useEntityDetails } from '../_components/EntityDetails';
 
 import { useEffect, useMemo, useState } from 'react';
 import { fetchWithAuth } from '@/lib/apiClient';
@@ -176,7 +177,11 @@ export default function PropertiesPage() {
 
   const [form, setForm] = useState<CreatePropertyForm>(emptyForm());
   const [activeTab, setActiveTab] = useState<'list' | 'create'>('list');
-  usePageBack(activeTab === 'create', () => setActiveTab('list'), busy);
+  const details = useEntityDetails<Property>();
+  usePageBack(!!details.selected || activeTab === 'create', () => {
+    if (details.selected) details.close();
+    else setActiveTab('list');
+  }, busy);
   const [searchQuery, setSearchQuery] = useState('');
 
   const filteredItems = useMemo(() => {
@@ -404,7 +409,21 @@ export default function PropertiesPage() {
 
   return (
     <div className="app-shell">
-      <div className="app-container space-y-6">
+      {details.selected && (
+        <EntityDetails
+          kind="properties"
+          item={details.selected}
+          busy={busy}
+          onClose={details.close}
+          onEdit={() => {
+            const item = details.selected;
+            if (!item) return;
+            details.clear();
+            startEdit(item);
+          }}
+        />
+      )}
+      <div hidden={!!details.selected} className="app-container space-y-6">
         <header className="flex items-center justify-between">
           <div>
             <h1 className="page-title">Properties</h1>
@@ -842,7 +861,8 @@ export default function PropertiesPage() {
                 return (
                   <div
                     key={p.id}
-                    className={`border rounded-lg p-3 ${isEditingThis ? 'border-slate-800 bg-slate-50' : ''}`}
+                    {...details.cardProps(p, busy)}
+                    className={`cursor-pointer transition hover:border-slate-400 border rounded-lg p-3 ${isEditingThis ? 'border-slate-800 bg-slate-50' : ''}`}
                   >
                     <div className="flex justify-between gap-3">
                       <div className="min-w-0">
@@ -894,6 +914,16 @@ export default function PropertiesPage() {
 
                       <div className="flex items-center gap-2">
                         <button
+                          type="button"
+                          data-detail-open
+                          onClick={(event) => details.open(p, event.currentTarget)}
+                          disabled={busy}
+                          className="btn-secondary text-sm"
+                        >
+                          Dettagli
+                        </button>
+
+                        <button
                           onClick={() => startEdit(p)}
                           disabled={busy}
                           className="btn-secondary text-sm"
@@ -922,7 +952,7 @@ export default function PropertiesPage() {
                     </div>
 
                     {docsOpen && (
-                      <div className="mt-3">
+                      <div className="mt-3" data-detail-ignore>
                         <EntityDocuments
                           entityKind="properties"
                           entityId={p.id}

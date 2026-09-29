@@ -1,6 +1,7 @@
 'use client';
 
 import { usePageBack } from '../_components/AppNavigation';
+import EntityDetails, { useEntityDetails } from '../_components/EntityDetails';
 
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -206,7 +207,11 @@ function ExpensesContent() {
   const [sortKey, setSortKey] = useState<SortKey>('costDate');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [activeTab, setActiveTab] = useState<'list' | 'create'>('list');
-  usePageBack(activeTab === 'create', () => setActiveTab('list'), busy);
+  const details = useEntityDetails<Expense>();
+  usePageBack(!!details.selected || activeTab === 'create', () => {
+    if (details.selected) details.close();
+    else setActiveTab('list');
+  }, busy);
 
   const onChange = (key: keyof CreateExpenseForm, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -691,7 +696,22 @@ function ExpensesContent() {
 
   return (
     <div className="app-shell">
-      <div className="app-container space-y-6">
+      {details.selected && (
+        <EntityDetails
+          kind="expenses"
+          item={details.selected}
+          labels={{ propertyId: propertyLabel, tenantId: tenantLabel, landlordId: landlordLabel }}
+          busy={busy}
+          onClose={details.close}
+          onEdit={() => {
+            const item = details.selected;
+            if (!item) return;
+            details.clear();
+            startEdit(item);
+          }}
+        />
+      )}
+      <div hidden={!!details.selected} className="app-container space-y-6">
         <header className="flex items-center justify-between">
           <div>
             <h1 className="page-title">Expenses</h1>
@@ -1109,7 +1129,8 @@ function ExpensesContent() {
                       : 'bg-slate-50 text-slate-700 border-slate-200';
 
                 return (
-                  <div key={x.id} className={`border rounded-lg p-3 ${isEditingThis ? 'border-slate-800 bg-slate-50' : ''}`}>
+                  <div key={x.id} {...details.cardProps(x, busy)}
+                    className={`cursor-pointer transition hover:border-slate-400 border rounded-lg p-3 ${isEditingThis ? 'border-slate-800 bg-slate-50' : ''}`}>
                     <div className="flex justify-between gap-3">
                       <div className="min-w-0">
                         <div className="font-semibold truncate">
@@ -1158,6 +1179,16 @@ function ExpensesContent() {
                         )}
 
                         <button
+                          type="button"
+                          data-detail-open
+                          onClick={(event) => details.open(x, event.currentTarget)}
+                          disabled={busy}
+                          className="btn-secondary text-sm"
+                        >
+                          Dettagli
+                        </button>
+
+                        <button
                           onClick={() => startEdit(x)}
                           disabled={busy}
                           className="btn-secondary text-sm"
@@ -1184,7 +1215,7 @@ function ExpensesContent() {
                     </div>
 
                     {docsOpen && (
-                      <div className="mt-3">
+                      <div className="mt-3" data-detail-ignore>
                         <EntityDocuments entityKind="expenses" entityId={x.id} label={`Documenti spesa (${actorText ? `${actorText} → ${propText}` : propText} · ${x.type})`} />
                       </div>
                     )}

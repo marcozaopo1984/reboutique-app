@@ -1,6 +1,7 @@
 'use client';
 
 import { usePageBack } from '../_components/AppNavigation';
+import EntityDetails, { useEntityDetails } from '../_components/EntityDetails';
 
 import { ChangeEvent, useEffect, useMemo, useState } from 'react';
 import { fetchWithAuth } from '@/lib/apiClient';
@@ -322,7 +323,11 @@ export default function LeasesPage() {
 
   const [form, setForm] = useState<CreateLeaseForm>(emptyForm());
   const [activeTab, setActiveTab] = useState<'list' | 'create'>('list');
-  usePageBack(activeTab === 'create', () => setActiveTab('list'), busy);
+  const details = useEntityDetails<Lease>();
+  usePageBack(!!details.selected || activeTab === 'create', () => {
+    if (details.selected) details.close();
+    else setActiveTab('list');
+  }, busy);
 
   const [filters, setFilters] = useState<LeaseFilters>({
     q: '',
@@ -690,7 +695,22 @@ export default function LeasesPage() {
 
   return (
     <div className="app-shell">
-      <div className="app-container space-y-6">
+      {details.selected && (
+        <EntityDetails
+          kind="leases"
+          item={details.selected}
+          labels={{ propertyId: propertyLabel, tenantId: tenantLabel, landlordId: landlordLabel }}
+          busy={busy}
+          onClose={details.close}
+          onEdit={() => {
+            const item = details.selected;
+            if (!item) return;
+            details.clear();
+            startEdit(item);
+          }}
+        />
+      )}
+      <div hidden={!!details.selected} className="app-container space-y-6">
         <header className="flex items-center justify-between">
           <div>
             <h1 className="page-title">Leases</h1>
@@ -1397,7 +1417,8 @@ export default function LeasesPage() {
                 return (
                   <div
                     key={x.id}
-                    className={`border rounded-lg p-3 ${isEditingThis ? 'border-slate-800 bg-slate-50' : ''}`}
+                    {...details.cardProps(x, busy)}
+                    className={`cursor-pointer transition hover:border-slate-400 border rounded-lg p-3 ${isEditingThis ? 'border-slate-800 bg-slate-50' : ''}`}
                   >
                     <div className="flex justify-between gap-3">
                       <div className="min-w-0">
@@ -1458,6 +1479,16 @@ export default function LeasesPage() {
 
                       <div className="flex items-center gap-2 flex-wrap justify-end">
                         <button
+                          type="button"
+                          data-detail-open
+                          onClick={(event) => details.open(x, event.currentTarget)}
+                          disabled={busy}
+                          className="btn-secondary text-sm"
+                        >
+                          Dettagli
+                        </button>
+
+                        <button
                           onClick={() => startEdit(x)}
                           disabled={busy}
                           className="btn-secondary text-sm"
@@ -1492,7 +1523,7 @@ export default function LeasesPage() {
                     </div>
 
                     {docsOpen && (
-                      <div className="mt-3">
+                      <div className="mt-3" data-detail-ignore>
                         <EntityDocuments
                           entityKind="leases"
                           entityId={x.id}
