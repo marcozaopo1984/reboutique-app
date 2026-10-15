@@ -1,3 +1,4 @@
+import { noteFields, contractNote } from '../common/notes';
 
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { FirebaseService } from '../firebase/firebase.service';
@@ -306,7 +307,7 @@ export class LeasesService {
 
       dueDayOfMonth: dto.dueDayOfMonth,
 
-      notes: dto.notes,
+      ...noteFields(dto.notes),
       poweredBy: dto.poweredBy,
       piumone: dto.piumone,
       foundThrough: dto.foundThrough,
@@ -331,104 +332,123 @@ export class LeasesService {
     return { id: doc.id, ...(doc.data() as any) };
   }
 
+  async listNotes(holderId: string, leaseId: string) {
+    const lease = await this.findOne(holderId, leaseId);
+    // Equality-only queries need no new composite index and include paid cashflows.
+    const [payments, expenses] = await Promise.all([
+      this.paymentsCollection(holderId).where('leaseId', '==', leaseId).get(),
+      this.expensesCollection(holderId).where('leaseId', '==', leaseId).get(),
+    ]);
+    const entries = [
+      contractNote('contract', leaseId, lease),
+      ...payments.docs.map(doc => contractNote('payment', doc.id, doc.data())),
+      ...expenses.docs.map(doc => contractNote('expense', doc.id, doc.data())),
+    ].filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+    entries.sort((a, b) => (b.insertedAt ?? '').localeCompare(a.insertedAt ?? '') || a.id.localeCompare(b.id));
+    return { leaseId, notes: entries };
+  }
+
   async update(holderId: string, leaseId: string, dto: UpdateLeaseDto) {
     const ref = this.leasesCollection(holderId).doc(leaseId);
-    const doc = await ref.get();
-    if (!doc.exists) throw new NotFoundException(`Lease ${leaseId} not found`);
+    await this.firebaseService.firestore.runTransaction(async (transaction) => {
+      const doc = await transaction.get(ref);
+      if (!doc.exists) throw new NotFoundException(`Lease ${leaseId} not found`);
 
-    const current = doc.data() as any;
+      const current = doc.data() as any;
 
-    if (dto.propertyId) {
-      const propSnap = await this.propertiesDoc(holderId, dto.propertyId).get();
-      if (!propSnap.exists) throw new NotFoundException(`Property ${dto.propertyId} not found`);
-      const prop = propSnap.data() as any;
+      if (dto.propertyId) {
+        const propSnap = await this.propertiesDoc(holderId, dto.propertyId).get();
+        if (!propSnap.exists) throw new NotFoundException(`Property ${dto.propertyId} not found`);
+        const prop = propSnap.data() as any;
+
+        const effectiveType: LeaseType = (dto.type ?? current.type) as LeaseType;
+
+        if (effectiveType === LeaseType.LANDLORD && prop?.type && prop.type !== 'APARTMENT') {
+          throw new BadRequestException('LANDLORD lease must be linked to a property of type APARTMENT');
+        }
+      }
+
+      const currentStartDate = this.parseAnyDateLike(current.startDate);
+      const effectiveStartDate =
+        dto.startDate !== undefined ? this.requireDate(dto.startDate, 'startDate') : currentStartDate;
+
+      const shouldSyncUpfrontDateToStart = (fieldName: string): boolean => {
+        if (dto.startDate === undefined || !effectiveStartDate) return false;
+        const currentValue = this.parseAnyDateLike(current[fieldName]);
+        return !currentValue || this.sameDateOnly(currentValue, currentStartDate);
+      };
 
       const effectiveType: LeaseType = (dto.type ?? current.type) as LeaseType;
+      const effectiveEndDate =
+        dto.endDate !== undefined ? this.requireDate(dto.endDate, 'endDate') : this.parseAnyDateLike(current.endDate);
+      const effectiveDepositDays =
+        dto.depositDays === null
+          ? 0
+          : dto.depositDays !== undefined
+            ? dto.depositDays
+            : current.depositDays ?? 0;
+      const shouldRecomputeDepositReturnDate =
+        effectiveType === LeaseType.TENANT &&
+        dto.depositReturnDate === undefined &&
+        (dto.endDate !== undefined || dto.depositDays !== undefined || dto.type !== undefined) &&
+        Boolean(effectiveEndDate);
 
-      if (effectiveType === LeaseType.LANDLORD && prop?.type && prop.type !== 'APARTMENT') {
-        throw new BadRequestException('LANDLORD lease must be linked to a property of type APARTMENT');
-      }
-    }
+      const updateData = this.cleanData({
+        ...dto,
+        ...noteFields(dto.notes, current),
 
-    const currentStartDate = this.parseAnyDateLike(current.startDate);
-    const effectiveStartDate =
-      dto.startDate !== undefined ? this.requireDate(dto.startDate, 'startDate') : currentStartDate;
-
-    const shouldSyncUpfrontDateToStart = (fieldName: string): boolean => {
-      if (dto.startDate === undefined || !effectiveStartDate) return false;
-      const currentValue = this.parseAnyDateLike(current[fieldName]);
-      return !currentValue || this.sameDateOnly(currentValue, currentStartDate);
-    };
-
-    const effectiveType: LeaseType = (dto.type ?? current.type) as LeaseType;
-    const effectiveEndDate =
-      dto.endDate !== undefined ? this.requireDate(dto.endDate, 'endDate') : this.parseAnyDateLike(current.endDate);
-    const effectiveDepositDays =
-      dto.depositDays === null
-        ? 0
-        : dto.depositDays !== undefined
-          ? dto.depositDays
-          : current.depositDays ?? 0;
-    const shouldRecomputeDepositReturnDate =
-      effectiveType === LeaseType.TENANT &&
-      dto.depositReturnDate === undefined &&
-      (dto.endDate !== undefined || dto.depositDays !== undefined || dto.type !== undefined) &&
-      Boolean(effectiveEndDate);
-
-    const updateData = this.cleanData({
-      ...dto,
-
-      depositDays:
-        effectiveType !== LeaseType.TENANT && dto.type !== undefined
-          ? admin.firestore.FieldValue.delete()
-          : dto.depositDays === null
+        depositDays:
+          effectiveType !== LeaseType.TENANT && dto.type !== undefined
             ? admin.firestore.FieldValue.delete()
-            : dto.depositDays,
+            : dto.depositDays === null
+              ? admin.firestore.FieldValue.delete()
+              : dto.depositDays,
 
-      bookingDate: dto.bookingDate ? this.requireDate(dto.bookingDate, 'bookingDate') : undefined,
-      startDate: dto.startDate ? this.requireDate(dto.startDate, 'startDate') : undefined,
-      endDate: dto.endDate ? this.requireDate(dto.endDate, 'endDate') : undefined,
-      nextPaymentDue: dto.nextPaymentDue ? this.requireDate(dto.nextPaymentDue, 'nextPaymentDue') : undefined,
+        bookingDate: dto.bookingDate ? this.requireDate(dto.bookingDate, 'bookingDate') : undefined,
+        startDate: dto.startDate ? this.requireDate(dto.startDate, 'startDate') : undefined,
+        endDate: dto.endDate ? this.requireDate(dto.endDate, 'endDate') : undefined,
+        nextPaymentDue: dto.nextPaymentDue ? this.requireDate(dto.nextPaymentDue, 'nextPaymentDue') : undefined,
 
-      depositDate:
-        dto.depositDate !== undefined
-          ? this.requireDate(dto.depositDate, 'depositDate')
-          : shouldSyncUpfrontDateToStart('depositDate')
-            ? effectiveStartDate
-            : undefined,
-      depositReturnDate:
-        effectiveType !== LeaseType.TENANT && dto.type !== undefined
-          ? admin.firestore.FieldValue.delete()
-          : dto.depositReturnDate !== undefined
-            ? this.requireDate(dto.depositReturnDate, 'depositReturnDate')
-            : shouldRecomputeDepositReturnDate && effectiveEndDate
-              ? this.addDaysUTC(effectiveEndDate, effectiveDepositDays)
-              : undefined,
-      adminFeeDate:
-        dto.adminFeeDate !== undefined
-          ? this.requireDate(dto.adminFeeDate, 'adminFeeDate')
-          : effectiveType === LeaseType.TENANT
-            ? undefined
-            : shouldSyncUpfrontDateToStart('adminFeeDate')
+        depositDate:
+          dto.depositDate !== undefined
+            ? this.requireDate(dto.depositDate, 'depositDate')
+            : shouldSyncUpfrontDateToStart('depositDate')
               ? effectiveStartDate
               : undefined,
-      bookingCostDate:
-        dto.bookingCostDate !== undefined
-          ? this.requireDate(dto.bookingCostDate, 'bookingCostDate')
-          : shouldSyncUpfrontDateToStart('bookingCostDate')
-            ? effectiveStartDate
-            : undefined,
-      registrationTaxDate:
-        dto.registrationTaxDate !== undefined
-          ? this.requireDate(dto.registrationTaxDate, 'registrationTaxDate')
-          : shouldSyncUpfrontDateToStart('registrationTaxDate')
-            ? effectiveStartDate
-            : undefined,
+        depositReturnDate:
+          effectiveType !== LeaseType.TENANT && dto.type !== undefined
+            ? admin.firestore.FieldValue.delete()
+            : dto.depositReturnDate !== undefined
+              ? this.requireDate(dto.depositReturnDate, 'depositReturnDate')
+              : shouldRecomputeDepositReturnDate && effectiveEndDate
+                ? this.addDaysUTC(effectiveEndDate, effectiveDepositDays)
+                : undefined,
+        adminFeeDate:
+          dto.adminFeeDate !== undefined
+            ? this.requireDate(dto.adminFeeDate, 'adminFeeDate')
+            : effectiveType === LeaseType.TENANT
+              ? undefined
+              : shouldSyncUpfrontDateToStart('adminFeeDate')
+                ? effectiveStartDate
+                : undefined,
+        bookingCostDate:
+          dto.bookingCostDate !== undefined
+            ? this.requireDate(dto.bookingCostDate, 'bookingCostDate')
+            : shouldSyncUpfrontDateToStart('bookingCostDate')
+              ? effectiveStartDate
+              : undefined,
+        registrationTaxDate:
+          dto.registrationTaxDate !== undefined
+            ? this.requireDate(dto.registrationTaxDate, 'registrationTaxDate')
+            : shouldSyncUpfrontDateToStart('registrationTaxDate')
+              ? effectiveStartDate
+              : undefined,
 
-      updatedAt: new Date(),
-    } as any);
+        updatedAt: new Date(),
+      } as any);
 
-    await ref.set(updateData, { merge: true });
+      transaction.set(ref, updateData, { merge: true });
+    });
     const updatedSnap = await ref.get();
     const updatedLease = updatedSnap.data() as any;
 

@@ -48,6 +48,12 @@ export class LeasesController {
     return this.leasesService.findOne(holderId, id);
   }
 
+  @Get(':id/notes')
+  @Roles('HOLDER')
+  listNotes(@Req() req: any, @Param('id') id: string) {
+    return this.leasesService.listNotes(this.getHolderId(req), id);
+  }
+
   @Patch(':id')
   @Roles('HOLDER')
   update(@Req() req: any, @Param('id') id: string, @Body() dto: UpdateLeaseDto) {

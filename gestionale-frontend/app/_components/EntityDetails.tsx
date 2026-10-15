@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import ContractNotes from './ContractNotes';
 import type { MouseEvent } from 'react';
 import { detailFields, detailTitles } from './entityDetailFields';
 import type { EntityKind, DetailField } from './entityDetailFields';
@@ -85,7 +86,7 @@ export default function EntityDetails({ kind, item, labels = {}, onClose, onEdit
           </div>
         </div>
         <dl className="mt-6 grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2 lg:grid-cols-3">
-          {detailFields[kind].filter(field => !field.optional || record[field.key] != null).map(field => {
+          {detailFields[kind].filter(field => (kind !== 'leases' || field.key !== 'notes') && (!field.optional || record[field.key] != null)).map(field => {
             const raw = record[field.key];
             const label = typeof raw === 'string' ? labels[field.key]?.get(raw) : undefined;
             const value = label && label !== raw ? `${label} (${raw})` :
@@ -101,6 +102,7 @@ export default function EntityDetails({ kind, item, labels = {}, onClose, onEdit
             );
           })}
         </dl>
+        {kind === 'leases' && <ContractNotes key={item.id} leaseId={item.id} />}
       </div>
     </section>
   );

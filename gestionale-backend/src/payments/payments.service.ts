@@ -1,3 +1,4 @@
+import { noteFields } from '../common/notes';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { FirebaseService } from '../firebase/firebase.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
@@ -71,7 +72,7 @@ export class PaymentsService {
 
     const data = this.clean({
       ...dto,
-      notes: dto.notes?.trim(),
+      ...noteFields(dto.notes),
       apartmentId,
       status: dto.status ?? 'PLANNED',
       currency: dto.currency ?? 'EUR',
@@ -96,28 +97,30 @@ export class PaymentsService {
 
   async update(holderId: string, paymentId: string, dto: UpdatePaymentDto) {
     const ref = this.paymentsCollection(holderId).doc(paymentId);
-    const snap = await ref.get();
-    if (!snap.exists) throw new NotFoundException(`Payment ${paymentId} not found`);
+    await this.firebaseService.firestore.runTransaction(async (transaction) => {
+      const snap = await transaction.get(ref);
+      if (!snap.exists) throw new NotFoundException(`Payment ${paymentId} not found`);
 
-    const current = snap.data() as any;
-    this.ensurePaidDateInvariant({
-      status: dto.status ?? current?.status,
-      paidDate: dto.paidDate ?? current?.paidDate,
+      const current = snap.data() as any;
+      this.ensurePaidDateInvariant({
+        status: dto.status ?? current?.status,
+        paidDate: dto.paidDate ?? current?.paidDate,
+      });
+
+      let apartmentId = dto.apartmentId;
+      if (!apartmentId && dto.propertyId) {
+        apartmentId = await this.deriveApartmentId(holderId, dto.propertyId);
+      }
+
+      const data = this.clean({
+        ...dto,
+        ...noteFields(dto.notes, current),
+        apartmentId,
+        updatedAt: new Date(),
+      });
+
+      transaction.set(ref, data, { merge: true });
     });
-
-    let apartmentId = dto.apartmentId;
-    if (!apartmentId && dto.propertyId) {
-      apartmentId = await this.deriveApartmentId(holderId, dto.propertyId);
-    }
-
-    const data = this.clean({
-      ...dto,
-      notes: dto.notes?.trim(),
-      apartmentId,
-      updatedAt: new Date(),
-    });
-
-    await ref.set(data, { merge: true });
     const updated = await ref.get();
     return { id: updated.id, ...(updated.data() as any) };
   }

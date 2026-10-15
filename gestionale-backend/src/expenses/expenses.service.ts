@@ -1,3 +1,4 @@
+import { noteFields } from '../common/notes';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { FirebaseService } from '../firebase/firebase.service';
 import { CreateExpenseDto } from './dto/create-expense.dto';
@@ -56,7 +57,7 @@ export class ExpensesService {
       ...dto,
       type: dto.type?.trim(),
       description: dto.description?.trim(),
-      notes: dto.notes?.trim(),
+      ...noteFields(dto.notes),
       status: paidFields.status,
       currency: dto.currency ?? 'EUR',
       createdAt: new Date(),
@@ -87,26 +88,28 @@ export class ExpensesService {
 
   async update(holderId: string, id: string, dto: UpdateExpenseDto) {
     const ref = this.collection(holderId).doc(id);
-    const doc = await ref.get();
-    if (!doc.exists) throw new NotFoundException('Expense not found');
+    await this.firebaseService.firestore.runTransaction(async (transaction) => {
+      const doc = await transaction.get(ref);
+      if (!doc.exists) throw new NotFoundException('Expense not found');
 
-    const existing = doc.data() as any;
-    const paidFields = this.normalizePaidFields(dto.status, dto.paidDate, existing);
+      const existing = doc.data() as any;
+      const paidFields = this.normalizePaidFields(dto.status, dto.paidDate, existing);
 
-    const data = this.clean({
-      ...dto,
-      type: dto.type?.trim(),
-      description: dto.description?.trim(),
-      notes: dto.notes?.trim(),
-      status: paidFields.status,
-      paidDate:
-        String(paidFields.status).toUpperCase() === 'PAID'
-          ? paidFields.paidDate
-          : admin.firestore.FieldValue.delete(),
-      updatedAt: new Date(),
+      const data = this.clean({
+        ...dto,
+        type: dto.type?.trim(),
+        description: dto.description?.trim(),
+        ...noteFields(dto.notes, existing),
+        status: paidFields.status,
+        paidDate:
+          String(paidFields.status).toUpperCase() === 'PAID'
+            ? paidFields.paidDate
+            : admin.firestore.FieldValue.delete(),
+        updatedAt: new Date(),
+      });
+
+      transaction.set(ref, data, { merge: true });
     });
-
-    await ref.set(data, { merge: true });
     const updated = await ref.get();
     return { id: updated.id, ...(updated.data() as any) };
   }

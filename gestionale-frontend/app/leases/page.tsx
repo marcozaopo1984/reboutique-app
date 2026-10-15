@@ -614,7 +614,7 @@ export default function LeasesPage() {
       registrationTaxAmount: toNum(form.registrationTaxAmount),
       registrationTaxDate: cleanStr(form.registrationTaxDate) || undefined,
 
-      notes: cleanStr(form.notes) || undefined,
+      notes: cleanStr(form.notes),
       poweredBy: cleanStr(form.poweredBy) || undefined,
       piumone: form.piumone ? 'si' : undefined,
       foundThrough: cleanStr(form.foundThrough) || undefined,
@@ -1186,7 +1186,7 @@ export default function LeasesPage() {
           </div>
 
           <div className="md:col-span-3">
-            <Field label="Note contratto">
+            <Field label="Note dirette del contratto">
               <textarea
                 value={form.notes}
                 onChange={(e: ChangeEvent<HTMLTextAreaElement>) => onChange('notes', e.target.value)}
