@@ -1,5 +1,7 @@
 'use client';
 
+import { buildPropertySearch } from '../_lib/propertySearch';
+
 import { usePageBack } from '../_components/AppNavigation';
 import EntityDetails, { useEntityDetails } from '../_components/EntityDetails';
 
@@ -38,7 +40,7 @@ const filterTenants = (tenants: Tenant[], query: string) => {
   });
 };
 type Landlord = { id: string; firstName?: string; lastName?: string; name?: string };
-type Property = { id: string; code?: string; name?: string; type?: 'APARTMENT' | 'ROOM' | 'BED' | string };
+type Property = { id: string; apartmentId?: string; code?: string; name?: string; type?: 'APARTMENT' | 'ROOM' | 'BED' | string };
 
 type Lease = {
   id: string;
@@ -391,13 +393,18 @@ export default function LeasesPage() {
     [properties],
   );
 
+  const propertySearch = useMemo(
+    () => buildPropertySearch(properties, filters.propertyId),
+    [properties, filters.propertyId],
+  );
+
   const filteredItems = useMemo(() => {
     const q = cleanStr(filters.q).toLowerCase();
     const today = todayYmd();
 
     return items.filter((x) => {
       if (filters.type && x.type !== filters.type) return false;
-      if (filters.propertyId && x.propertyId !== filters.propertyId) return false;
+      if (filters.propertyId && !propertySearch.ids.has(x.propertyId)) return false;
       if (filters.tenantId && x.tenantId !== filters.tenantId) return false;
       if (filters.landlordId && x.landlordId !== filters.landlordId) return false;
 
@@ -424,6 +431,7 @@ export default function LeasesPage() {
           x.type,
           x.propertyId,
           propertyLabel.get(x.propertyId),
+          propertySearch.apartmentText.get(x.propertyId),
           x.tenantId,
           x.tenantId ? tenantLabel.get(x.tenantId) : '',
           x.landlordId,
@@ -450,7 +458,7 @@ export default function LeasesPage() {
 
       return true;
     });
-  }, [items, filters, landlordLabel, propertyLabel, tenantLabel]);
+  }, [items, filters, landlordLabel, propertyLabel, tenantLabel, propertySearch]);
 
   const sortedItems = useMemo(() => {
     const dir = sortDir === 'asc' ? 1 : -1;
@@ -1257,7 +1265,7 @@ export default function LeasesPage() {
                   </Select>
                 </Field>
 
-                <Field label="Property">
+                <Field label="Immobile / appartamento">
                   <Select
                     value={filters.propertyId}
                     onChange={(e: ChangeEvent<HTMLSelectElement>) =>
@@ -1266,12 +1274,15 @@ export default function LeasesPage() {
                     disabled={busy}
                   >
                     <option value="">(all)</option>
-                    {properties.map((p) => (
+                    {[...properties].sort((a, b) =>
+                      (a.code || a.id).localeCompare(b.code || b.id, 'it', { numeric: true, sensitivity: 'base' })
+                    ).map((p) => (
                       <option key={p.id} value={p.id}>
-                        {propertyLabel.get(p.id) ?? p.id}
+                        {propertyLabel.get(p.id) ?? p.id}{p.type === 'APARTMENT' ? ' (intero appartamento)' : ''}
                       </option>
                     ))}
                   </Select>
+                  <p className="mt-1 text-xs text-slate-500">Un appartamento include tutte le sue stanze e i suoi letti.</p>
                 </Field>
 
                 <Field label="Tenant">

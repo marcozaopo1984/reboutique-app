@@ -1,5 +1,7 @@
 'use client';
 
+import { buildPropertySearch } from '../_lib/propertySearch';
+
 import { usePageBack } from '../_components/AppNavigation';
 import EntityDetails, { useEntityDetails } from '../_components/EntityDetails';
 
@@ -19,7 +21,7 @@ type Lease = {
   landlordId?: string;
   propertyId?: string;
 };
-type Property = { id: string; code?: string; name?: string; type?: string };
+type Property = { id: string; apartmentId?: string; code?: string; name?: string; type?: string };
 
 type ExpenseFrequency = 'ONCE' | 'MONTHLY' | 'YEARLY' | string;
 type ExpenseScope = 'BUILDING' | 'UNIT' | string;
@@ -606,10 +608,15 @@ function ExpensesContent() {
     return Array.from(s).sort(compareStr);
   }, [items, filters.includePaid]);
 
+  const propertySearch = useMemo(
+    () => buildPropertySearch(properties, filters.propertyId),
+    [properties, filters.propertyId],
+  );
+
   const filtered = useMemo(() => {
     const q = cleanStr(filters.q).toLowerCase();
     return enriched.filter((x: any) => {
-      if (filters.propertyId && x.propertyId !== filters.propertyId) return false;
+      if (filters.propertyId && !propertySearch.ids.has(x.propertyId)) return false;
       if (filters.type && String(x.type ?? '') !== filters.type) return false;
       if (filters.scope && String(x.scope ?? '') !== filters.scope) return false;
       if (filters.frequency && String(x.frequency ?? '') !== filters.frequency) return false;
@@ -624,6 +631,7 @@ function ExpensesContent() {
           x.id,
           x.propertyId,
           propText,
+          propertySearch.apartmentText.get(x.propertyId) ?? '',
           actorText,
           x._actorType ?? '',
           x.type ?? '',
@@ -645,7 +653,7 @@ function ExpensesContent() {
 
       return true;
     });
-  }, [enriched, filters, propertyLabel]);
+  }, [enriched, filters, propertyLabel, propertySearch]);
 
   const sorted = useMemo(() => {
     const dir = sortDir === 'asc' ? 1 : -1;
@@ -795,7 +803,7 @@ function ExpensesContent() {
               />
             </Field>
 
-            <Field label="Property">
+            <Field label="Immobile / appartamento">
               <Select
                 value={filters.propertyId}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
@@ -804,13 +812,16 @@ function ExpensesContent() {
                 disabled={busy}
               >
                 <option value="">(all)</option>
-                {properties.map((p) => (
+                {[...properties].sort((a, b) =>
+                      (a.code || a.id).localeCompare(b.code || b.id, 'it', { numeric: true, sensitivity: 'base' })
+                    ).map((p) => (
                   <option key={p.id} value={p.id}>
-                    {propertyLabel.get(p.id) ?? p.id}
+                    {propertyLabel.get(p.id) ?? p.id}{p.type === 'APARTMENT' ? ' (intero appartamento)' : ''}
                   </option>
                 ))}
               </Select>
-            </Field>
+              <p className="mt-1 text-xs text-slate-500">Un appartamento include tutte le sue stanze e i suoi letti.</p>
+                </Field>
 
             <Field label="Type">
               <Select

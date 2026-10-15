@@ -1,5 +1,7 @@
 'use client';
 
+import { buildPropertySearch } from '../_lib/propertySearch';
+
 import { usePageBack } from '../_components/AppNavigation';
 import EntityDetails, { useEntityDetails } from '../_components/EntityDetails';
 
@@ -12,7 +14,7 @@ import { Field, Input, Select } from '@/components/form/Field';
 
 type Tenant = { id: string; firstName?: string; lastName?: string };
 type Landlord = { id: string; firstName?: string; lastName?: string; name?: string };
-type Property = { id: string; code?: string; name?: string; type?: string; buildingId?: string };
+type Property = { id: string; apartmentId?: string; code?: string; name?: string; type?: string; buildingId?: string };
 type Lease = {
   id: string;
   type?: 'TENANT' | 'LANDLORD';
@@ -595,11 +597,16 @@ function PaymentsContent() {
     return Array.from(s).sort(compareStr);
   }, [items, filters.includePaid]);
 
+  const propertySearch = useMemo(
+    () => buildPropertySearch(properties, filters.propertyId),
+    [properties, filters.propertyId],
+  );
+
   const filtered = useMemo(() => {
     const q = cleanStr(filters.q).toLowerCase();
     return enriched.filter((p: any) => {
       if (filters.tenantId && p._resolvedTenantId !== filters.tenantId) return false;
-      if (filters.propertyId && p.propertyId !== filters.propertyId) return false;
+      if (filters.propertyId && !propertySearch.ids.has(p.propertyId)) return false;
       if (filters.leaseId && (p.leaseId ?? '') !== filters.leaseId) return false;
       if (filters.kind && (p.kind ?? '') !== filters.kind) return false;
       if (filters.status && (p._effectiveStatus ?? '') !== filters.status) return false;
@@ -618,6 +625,7 @@ function PaymentsContent() {
           p.leaseId ?? '',
           actorText,
           propText,
+          propertySearch.apartmentText.get(p.propertyId) ?? '',
           p.notes ?? '',
           p.kind ?? '',
           p.status ?? '',
@@ -631,7 +639,7 @@ function PaymentsContent() {
       }
       return true;
     });
-  }, [enriched, filters, propertyLabel]);
+  }, [enriched, filters, propertyLabel, propertySearch]);
 
   const sorted = useMemo(() => {
     const dir = sortDir === 'asc' ? 1 : -1;
@@ -801,7 +809,7 @@ function PaymentsContent() {
               </Select>
             </Field>
 
-            <Field label="Property">
+            <Field label="Immobile / appartamento">
               <Select
                 value={filters.propertyId}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
@@ -810,13 +818,16 @@ function PaymentsContent() {
                 disabled={busy}
               >
                 <option value="">(all)</option>
-                {properties.map((p) => (
+                {[...properties].sort((a, b) =>
+                      (a.code || a.id).localeCompare(b.code || b.id, 'it', { numeric: true, sensitivity: 'base' })
+                    ).map((p) => (
                   <option key={p.id} value={p.id}>
-                    {propertyLabel.get(p.id) ?? p.id}
+                    {propertyLabel.get(p.id) ?? p.id}{p.type === 'APARTMENT' ? ' (intero appartamento)' : ''}
                   </option>
                 ))}
               </Select>
-            </Field>
+              <p className="mt-1 text-xs text-slate-500">Un appartamento include tutte le sue stanze e i suoi letti.</p>
+                </Field>
 
             <Field label="Lease">
               <Select
