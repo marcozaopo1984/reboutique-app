@@ -1180,7 +1180,6 @@ function ExpensesContent() {
                         </div>
 
                         {x.description && <div className="text-xs text-slate-500 mt-1">Desc: {x.description}</div>}
-                        {x.notes && <div className="text-xs text-slate-500 mt-1 whitespace-pre-wrap break-words">Note: {x.notes}</div>}
 
                         <div className="text-[11px] text-slate-400 mt-1">id: {x.id}</div>
                       </div>
@@ -1231,6 +1230,15 @@ function ExpensesContent() {
                         </button>
                       </div>
                     </div>
+
+                    {x.notes?.trim() && (
+                      <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                        <div className="text-xs font-semibold text-amber-900">Note</div>
+                        <p className="mt-1 line-clamp-3 whitespace-pre-wrap break-words text-sm text-slate-800">
+                          {x.notes}
+                        </p>
+                      </div>
+                    )}
 
                     {docsOpen && (
                       <div className="mt-3" data-detail-ignore>
