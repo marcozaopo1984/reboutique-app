@@ -182,7 +182,7 @@ function PaymentsContent() {
     month: '',
     onlyManual: false,
     onlyOverdueComputed: false,
-    includePaid: false,
+    includePaid: true,
   });
 
   const [sortKey, setSortKey] = useState<SortKey>('dueDate');
@@ -206,7 +206,7 @@ function PaymentsContent() {
     const month = searchParams.get('month') ?? '';
     const onlyManual = parseBool(searchParams.get('onlyManual'));
     const onlyOverdueComputed = parseBool(searchParams.get('onlyOverdueComputed'));
-    const includePaid = parseBool(searchParams.get('includePaid'));
+    const includePaid = parseBool(searchParams.get('includePaid') ?? '1');
 
     const sk = pickSortKey(searchParams.get('sortKey'));
     const sd = pickSortDir(searchParams.get('sortDir'));
@@ -242,7 +242,7 @@ function PaymentsContent() {
 
     if (filters.onlyManual) sp.set('onlyManual', '1');
     if (filters.onlyOverdueComputed) sp.set('onlyOverdueComputed', '1');
-    if (filters.includePaid) sp.set('includePaid', '1');
+    sp.set('includePaid', filters.includePaid ? '1' : '0');
 
     sp.set('sortKey', sortKey);
     sp.set('sortDir', sortDir);
@@ -283,7 +283,7 @@ function PaymentsContent() {
 
     if (filters.onlyManual) sp.set('onlyManual', '1');
     if (filters.onlyOverdueComputed) sp.set('onlyOverdueComputed', '1');
-    if (filters.includePaid) sp.set('includePaid', '1');
+    sp.set('includePaid', filters.includePaid ? '1' : '0');
 
     sp.set('sortKey', sortKey);
     sp.set('sortDir', sortDir);
@@ -670,7 +670,7 @@ function PaymentsContent() {
       month: '',
       onlyManual: false,
       onlyOverdueComputed: false,
-      includePaid: false,
+      includePaid: true,
     });
   };
 
