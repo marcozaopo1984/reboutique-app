@@ -75,9 +75,12 @@ const normalizeExpenseType = (value: unknown): string =>
 const expenseAliases = (...values: string[]) => values.map(normalizeExpenseType);
 
 const EXPENSE_TYPE_MAP: Record<string, string[]> = {
+  'Canoni Proprietari': expenseAliases('RENT_TO_LANDLORD'),
+  'Admin Proprietari': expenseAliases('ADMIN_FEE_TO_LANDLORD'),
+  'Depositi ai Proprietari': expenseAliases('DEPOSIT_TO_LANDLORD'),
   Consumi: expenseAliases('CONSUMI', 'CONSUMO', 'UTILITIES'),
   Manutenzioni: expenseAliases('MANUTENZIONI', 'MANUTENZIONE'),
-  'Imposte e Tasse': expenseAliases('IMPOSTE_E_TASSE', 'IMPOSTE E TASSE', 'TASSE', 'IMPOSTE'),
+  'Imposte e Tasse': expenseAliases('IMPOSTE_E_TASSE', 'IMPOSTE E TASSE', 'TASSE', 'IMPOSTE', 'REGISTRATION_TAX'),
   Mobili: expenseAliases('MOBILI', 'FURNITURE'),
   Ristrutturazioni: expenseAliases('RISTRUTTURAZIONI', 'RISTRUTTURAZIONE', 'RENOVATION'),
   'Volture Energia': expenseAliases('VOLTURE_ENERGIA', 'VOLTURA_ENERGIA', 'VOLTURE ENERGIA', 'VOLTURA ENERGIA'),
@@ -400,6 +403,10 @@ function BreakevenAppartamentiContent() {
     Fideiussione: number;
     'Booking Cost': number;
     'Deposito Versato': number;
+    'Canoni Proprietari': number;
+    'Admin Proprietari': number;
+    'Depositi ai Proprietari': number;
+    'Depositi Restituiti dai Proprietari': number;
 
     'Canoni Attivi': number;
     'Admin Attive': number;
@@ -458,7 +465,11 @@ function BreakevenAppartamentiContent() {
       const sumPayments = (kinds: string[], monthOnly: boolean) => {
         let s = 0;
         for (const p of payList) {
-          if (!p.leaseId || !leaseIds.has(p.leaseId)) continue;
+          if (!p.leaseId) continue;
+          const isLandlordReturn = p.kind === 'DEPOSIT_RETURN_FROM_LANDLORD';
+          if (isLandlordReturn) {
+            if (!leases.some(l => l.id === p.leaseId && String(l.type) === 'LANDLORD' && propertyToApartmentId.get(l.propertyId) === aptId)) continue;
+          } else if (!leaseIds.has(p.leaseId)) continue;
 
           const d = dateToYmd(p.dueDate);
           if (!d) continue;
@@ -474,6 +485,11 @@ function BreakevenAppartamentiContent() {
         }
         return s;
       };
+
+      const CanoniProprietari = sumExpenses(EXPENSE_TYPE_MAP['Canoni Proprietari'], false);
+      const AdminProprietari = sumExpenses(EXPENSE_TYPE_MAP['Admin Proprietari'], false);
+      const DepositiProprietari = sumExpenses(EXPENSE_TYPE_MAP['Depositi ai Proprietari'], false);
+      const DepositiRestituitiProprietari = sumPayments(['DEPOSIT_RETURN_FROM_LANDLORD'], false);
 
       const Consumi = sumExpenses(EXPENSE_TYPE_MAP.Consumi, false);
       const Manutenzioni = sumExpenses(EXPENSE_TYPE_MAP.Manutenzioni, false);
@@ -499,14 +515,18 @@ function BreakevenAppartamentiContent() {
         VoltureEnergia +
         Agenzia +
         Fideiussione +
-        BookingCost;
+        BookingCost + CanoniProprietari + AdminProprietari + DepositiProprietari;
 
       const costsEconomic = costsCash + DepositoVersato;
-      const revenues = CanoniAttivi + AdminAttive + DepositoPercepito;
+      const revenues = CanoniAttivi + AdminAttive + DepositoPercepito + DepositiRestituitiProprietari;
 
       const breakevenCash = revenues - costsCash;
       const breakevenEconomic = revenues - costsEconomic;
 
+      const mCanoniProprietari = sumExpenses(EXPENSE_TYPE_MAP['Canoni Proprietari'], true);
+      const mAdminProprietari = sumExpenses(EXPENSE_TYPE_MAP['Admin Proprietari'], true);
+      const mDepositiProprietari = sumExpenses(EXPENSE_TYPE_MAP['Depositi ai Proprietari'], true);
+      const mDepositiRestituitiProprietari = sumPayments(['DEPOSIT_RETURN_FROM_LANDLORD'], true);
       const mConsumi = sumExpenses(EXPENSE_TYPE_MAP.Consumi, true);
       const mManut = sumExpenses(EXPENSE_TYPE_MAP.Manutenzioni, true);
       const mImp = sumExpenses(EXPENSE_TYPE_MAP['Imposte e Tasse'], true);
@@ -517,13 +537,13 @@ function BreakevenAppartamentiContent() {
       const mFid = sumExpenses(EXPENSE_TYPE_MAP.Fideiussione, true);
       const mBook = sumExpenses(EXPENSE_TYPE_MAP['Booking Cost'], true);
 
-      const mCostsCash = mConsumi + mManut + mImp + mMob + mRist + mVolt + mAgen + mFid + mBook;
+      const mCostsCash = mConsumi + mManut + mImp + mMob + mRist + mVolt + mAgen + mFid + mBook + mCanoniProprietari + mAdminProprietari + mDepositiProprietari;
 
       const mCanoni = sumPayments([...PAYMENT_KIND_MAP['Canoni Attivi']], true);
       const mAdmin = sumPayments([...PAYMENT_KIND_MAP['Admin Attive']], true);
       const mDep = sumPayments([...PAYMENT_KIND_MAP['Deposito Percepito']], true);
 
-      const monthlyMargin = mCanoni + mAdmin + mDep - mCostsCash;
+      const monthlyMargin = mCanoni + mAdmin + mDep + mDepositiRestituitiProprietari - mCostsCash;
 
       out.push({
         apartmentId: aptId,
@@ -539,6 +559,10 @@ function BreakevenAppartamentiContent() {
         Fideiussione,
         'Booking Cost': BookingCost,
         'Deposito Versato': DepositoVersato,
+        'Canoni Proprietari': CanoniProprietari,
+        'Admin Proprietari': AdminProprietari,
+        'Depositi ai Proprietari': DepositiProprietari,
+        'Depositi Restituiti dai Proprietari': DepositiRestituitiProprietari,
 
         'Canoni Attivi': CanoniAttivi,
         'Admin Attive': AdminAttive,
@@ -561,6 +585,8 @@ function BreakevenAppartamentiContent() {
     minStartByApartment,
     expensesByApartment,
     paymentsByApartment,
+    leases,
+    propertyToApartmentId,
     asOfDate,
     asOf,
     asOfMonth,
@@ -612,10 +638,10 @@ function BreakevenAppartamentiContent() {
         r['Volture Energia'] +
         r.Agenzia +
         r.Fideiussione +
-        r['Booking Cost'];
+        r['Booking Cost'] + r['Canoni Proprietari'] + r['Admin Proprietari'] + r['Depositi ai Proprietari'];
 
       const costsEconomic = costsCash + r['Deposito Versato'];
-      const revenues = r['Canoni Attivi'] + r['Admin Attive'] + r['Deposito Percepito'];
+      const revenues = r['Canoni Attivi'] + r['Admin Attive'] + r['Deposito Percepito'] + r['Depositi Restituiti dai Proprietari'];
 
       totals.costsCash += costsCash;
       totals.costsEconomic += costsEconomic;
@@ -646,6 +672,10 @@ function BreakevenAppartamentiContent() {
       'Fideiussione',
       'Booking Cost',
       'Deposito Versato',
+      'Canoni Proprietari',
+      'Admin Proprietari',
+      'Depositi ai Proprietari',
+      'Depositi Restituiti dai Proprietari',
       'Canoni Attivi',
       'Admin Attive',
       'Deposito Percepito',
@@ -673,6 +703,10 @@ function BreakevenAppartamentiContent() {
         r.Fideiussione,
         r['Booking Cost'],
         r['Deposito Versato'],
+        r['Canoni Proprietari'],
+        r['Admin Proprietari'],
+        r['Depositi ai Proprietari'],
+        r['Depositi Restituiti dai Proprietari'],
         r['Canoni Attivi'],
         r['Admin Attive'],
         r['Deposito Percepito'],
@@ -830,7 +864,7 @@ function BreakevenAppartamentiContent() {
           ) : (
             <>
               <div className="max-h-[72vh] overflow-auto rounded-lg border border-slate-200">
-                <table className="min-w-[1900px] w-full text-sm">
+                <table className="min-w-[2600px] w-full text-sm">
                   <thead className="sticky top-0 z-30 bg-slate-100 text-slate-700 shadow-sm">
                     <tr className="text-left border-b border-slate-200">
                       <th className="sticky left-0 z-40 min-w-[230px] bg-slate-100 px-3 py-3 whitespace-nowrap">Appartamento</th>
@@ -844,6 +878,10 @@ function BreakevenAppartamentiContent() {
                       <th className="min-w-[110px] px-3 py-3 text-right whitespace-nowrap">Fideiussione</th>
                       <th className="min-w-[110px] px-3 py-3 text-right whitespace-nowrap">Booking Cost</th>
                       <th className="min-w-[135px] px-3 py-3 text-right whitespace-nowrap">Deposito Versato</th>
+                      <th className="min-w-[150px] px-3 py-3 text-right whitespace-nowrap">Canoni Proprietari</th>
+                      <th className="min-w-[150px] px-3 py-3 text-right whitespace-nowrap">Admin Proprietari</th>
+                      <th className="min-w-[150px] px-3 py-3 text-right whitespace-nowrap">Depositi ai Proprietari</th>
+                      <th className="min-w-[150px] px-3 py-3 text-right whitespace-nowrap">Depositi Restituiti dai Proprietari</th>
                       <th className="min-w-[115px] px-3 py-3 text-right whitespace-nowrap">Canoni Attivi</th>
                       <th className="min-w-[110px] px-3 py-3 text-right whitespace-nowrap">Admin Attive</th>
                       <th className="min-w-[145px] px-3 py-3 text-right whitespace-nowrap">Deposito Percepito</th>
@@ -877,6 +915,10 @@ function BreakevenAppartamentiContent() {
                         <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">{fmtMoney(r.Fideiussione)}</td>
                         <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">{fmtMoney(r['Booking Cost'])}</td>
                         <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">{fmtMoney(r['Deposito Versato'])}</td>
+                        <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">{fmtMoney(r['Canoni Proprietari'])}</td>
+                        <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">{fmtMoney(r['Admin Proprietari'])}</td>
+                        <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">{fmtMoney(r['Depositi ai Proprietari'])}</td>
+                        <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">{fmtMoney(r['Depositi Restituiti dai Proprietari'])}</td>
 
                         <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">{fmtMoney(r['Canoni Attivi'])}</td>
                         <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">{fmtMoney(r['Admin Attive'])}</td>
@@ -903,6 +945,10 @@ function BreakevenAppartamentiContent() {
               <div className="text-xs text-slate-400 mt-3">
                 Nota: sono considerati tutti i contratti TENANT dell’appartamento, senza filtro sul loro stato rispetto ad asOf. Range somme: da
                 min(startDate) di tutti i contratti TENANT dell’appartamento fino ad asOf.
+                Sono inclusi canoni, admin fee e depositi versati ai proprietari, le restituzioni ricevute dai proprietari
+                e le imposte di registrazione. “Deposito Versato” indica le restituzioni agli inquilini,
+                sottratte solo nel Breakeven Economico. Il margine mensile segue la formula di Cassa per l’intero mese.
+                Sono inclusi anche i movimenti non ancora pagati.
               </div>
             </>
           )}
