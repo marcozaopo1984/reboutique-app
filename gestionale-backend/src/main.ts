@@ -1,6 +1,7 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import compression from 'compression';
 
 function getAllowedFrontendOrigins(): string[] {
   const configuredOrigins =
@@ -15,6 +16,8 @@ function getAllowedFrontendOrigins(): string[] {
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  app.use(compression());
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -38,6 +41,7 @@ async function bootstrap() {
     },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     allowedHeaders: 'Content-Type, Authorization',
+    maxAge: 600,
   });
 
   const port = Number.parseInt(process.env.PORT ?? '3001', 10);
