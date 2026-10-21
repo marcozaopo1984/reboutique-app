@@ -5,6 +5,7 @@ import { buildPropertySearch } from '../_lib/propertySearch';
 import { usePageBack } from '../_components/AppNavigation';
 import EntityDetails, { useEntityDetails } from '../_components/EntityDetails';
 
+import ListPagination, { usePaginatedItems } from '../_components/ListPagination';
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { fetchWithAuth } from '@/lib/apiClient';
@@ -613,9 +614,37 @@ function ExpensesContent() {
     [properties, filters.propertyId],
   );
 
+  // Search text depends on data, so typing only scans the cached strings.
+  const searchable = useMemo(() => enriched.map((x) => {
+    const propText = (propertyLabel.get(x.propertyId) ?? x.propertyId).toLowerCase();
+    const actorText = String(x._actorName ?? '').toLowerCase();
+    const searchText = [
+      x.id,
+      x.propertyId,
+      propText,
+      propertySearch.apartmentText.get(x.propertyId) ?? '',
+      actorText,
+      x._actorType ?? '',
+      x.type ?? '',
+      x.description ?? '',
+      x.notes ?? '',
+      x.scope ?? '',
+      x.frequency ?? '',
+      x.status ?? '',
+      x._effectiveStatus ?? '',
+      x._costYmd ?? '',
+      x._paidYmd ?? '',
+      x.leaseId ?? '',
+    ]
+      .join(' ')
+      .toLowerCase();
+
+    return { ...x, _searchText: searchText };
+  }), [enriched, propertyLabel, propertySearch]);
+
   const filtered = useMemo(() => {
     const q = cleanStr(filters.q).toLowerCase();
-    return enriched.filter((x: any) => {
+    return searchable.filter((x: any) => {
       if (filters.propertyId && !propertySearch.ids.has(x.propertyId)) return false;
       if (filters.type && String(x.type ?? '') !== filters.type) return false;
       if (filters.scope && String(x.scope ?? '') !== filters.scope) return false;
@@ -624,36 +653,11 @@ function ExpensesContent() {
       if (filters.month && x._month !== filters.month) return false;
       if (filters.onlyOverdueComputed && !x._overdueComputed) return false;
 
-      if (q) {
-        const propText = (propertyLabel.get(x.propertyId) ?? x.propertyId).toLowerCase();
-        const actorText = String(x._actorName ?? '').toLowerCase();
-        const hay = [
-          x.id,
-          x.propertyId,
-          propText,
-          propertySearch.apartmentText.get(x.propertyId) ?? '',
-          actorText,
-          x._actorType ?? '',
-          x.type ?? '',
-          x.description ?? '',
-          x.notes ?? '',
-          x.scope ?? '',
-          x.frequency ?? '',
-          x.status ?? '',
-          x._effectiveStatus ?? '',
-          x._costYmd ?? '',
-          x._paidYmd ?? '',
-          x.leaseId ?? '',
-        ]
-          .join(' ')
-          .toLowerCase();
-
-        if (!hay.includes(q)) return false;
-      }
+      if (q && !x._searchText.includes(q)) return false;
 
       return true;
     });
-  }, [enriched, filters, propertyLabel, propertySearch]);
+  }, [searchable, filters, propertySearch]);
 
   const sorted = useMemo(() => {
     const dir = sortDir === 'asc' ? 1 : -1;
@@ -667,6 +671,8 @@ function ExpensesContent() {
     });
     return arr;
   }, [filtered, sortKey, sortDir]);
+
+  const pagination = usePaginatedItems(sorted);
 
   const kpis = useMemo(() => {
     const totals = { ALL: 0, PLANNED: 0, PAID: 0, OVERDUE: 0 };
@@ -1116,8 +1122,10 @@ function ExpensesContent() {
         <div className="surface-card p-5">
           <div className="flex items-center justify-between gap-3 mb-3">
             <h2 className="font-medium">Elenco</h2>
-            <div className="text-xs text-slate-500">Mostrati: {sorted.length} / {items.length}</div>
+            <div className="text-xs text-slate-500">Risultati: {sorted.length} / {items.length}</div>
           </div>
+
+          {!loading && <ListPagination {...pagination} />}
 
           {loading ? (
             <div>Caricamento...</div>
@@ -1127,7 +1135,7 @@ function ExpensesContent() {
             <div className="text-sm text-slate-500">Nessun risultato con i filtri correnti.</div>
           ) : (
             <div className="space-y-2">
-              {sorted.map((x: any) => {
+              {pagination.pageItems.map((x: any) => {
                 const docsOpen = openDocsExpenseId === x.id;
                 const isEditingThis = editingExpenseId === x.id;
 
@@ -1248,6 +1256,7 @@ function ExpensesContent() {
                   </div>
                 );
               })}
+              <ListPagination {...pagination} />
             </div>
           )}
         </div>

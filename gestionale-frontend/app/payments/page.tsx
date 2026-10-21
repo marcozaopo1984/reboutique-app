@@ -5,6 +5,7 @@ import { buildPropertySearch } from '../_lib/propertySearch';
 import { usePageBack } from '../_components/AppNavigation';
 import EntityDetails, { useEntityDetails } from '../_components/EntityDetails';
 
+import ListPagination, { usePaginatedItems } from '../_components/ListPagination';
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { fetchWithAuth } from '@/lib/apiClient';
@@ -602,9 +603,34 @@ function PaymentsContent() {
     [properties, filters.propertyId],
   );
 
+  // Search text depends on data, so typing only scans the cached strings.
+  const searchable = useMemo(() => enriched.map((p) => {
+    const actorText = String(p._actorName ?? '').toLowerCase();
+    const propText = (propertyLabel.get(p.propertyId) ?? p.propertyId).toLowerCase();
+    const searchText = [
+      p.id,
+      p.tenantId ?? '',
+      p.landlordId ?? '',
+      p.propertyId,
+      p.leaseId ?? '',
+      actorText,
+      propText,
+      propertySearch.apartmentText.get(p.propertyId) ?? '',
+      p.notes ?? '',
+      p.kind ?? '',
+      p.status ?? '',
+      p._actorType ?? '',
+      p._dueYmd ?? '',
+      p._paidYmd ?? '',
+    ]
+      .join(' ')
+      .toLowerCase();
+    return { ...p, _searchText: searchText };
+  }), [enriched, propertyLabel, propertySearch]);
+
   const filtered = useMemo(() => {
     const q = cleanStr(filters.q).toLowerCase();
-    return enriched.filter((p: any) => {
+    return searchable.filter((p: any) => {
       if (filters.tenantId && p._resolvedTenantId !== filters.tenantId) return false;
       if (filters.propertyId && !propertySearch.ids.has(p.propertyId)) return false;
       if (filters.leaseId && (p.leaseId ?? '') !== filters.leaseId) return false;
@@ -614,32 +640,11 @@ function PaymentsContent() {
       if (filters.onlyManual && !p._isManual) return false;
       if (filters.onlyOverdueComputed && !p._overdueComputed) return false;
 
-      if (q) {
-        const actorText = String(p._actorName ?? '').toLowerCase();
-        const propText = (propertyLabel.get(p.propertyId) ?? p.propertyId).toLowerCase();
-        const hay = [
-          p.id,
-          p.tenantId ?? '',
-          p.landlordId ?? '',
-          p.propertyId,
-          p.leaseId ?? '',
-          actorText,
-          propText,
-          propertySearch.apartmentText.get(p.propertyId) ?? '',
-          p.notes ?? '',
-          p.kind ?? '',
-          p.status ?? '',
-          p._actorType ?? '',
-          p._dueYmd ?? '',
-          p._paidYmd ?? '',
-        ]
-          .join(' ')
-          .toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
+      if (q && !p._searchText.includes(q)) return false;
+
       return true;
     });
-  }, [enriched, filters, propertyLabel, propertySearch]);
+  }, [searchable, filters, propertySearch]);
 
   const sorted = useMemo(() => {
     const dir = sortDir === 'asc' ? 1 : -1;
@@ -653,6 +658,8 @@ function PaymentsContent() {
     });
     return arr;
   }, [filtered, sortKey, sortDir]);
+
+  const pagination = usePaginatedItems(sorted);
 
   const kpis = useMemo(() => {
     const totals = { ALL: 0, PLANNED: 0, PAID: 0, OVERDUE: 0 };
@@ -1088,9 +1095,11 @@ function PaymentsContent() {
           <div className="flex items-center justify-between gap-3 mb-3">
             <h2 className="font-medium">Elenco</h2>
             <div className="text-xs text-slate-500">
-              Mostrati: {sorted.length} / {items.length}
+              Risultati: {sorted.length} / {items.length}
             </div>
           </div>
+
+          {!loading && <ListPagination {...pagination} />}
 
           {loading ? (
             <div>Caricamento...</div>
@@ -1100,7 +1109,7 @@ function PaymentsContent() {
             <div className="text-sm text-slate-500">Nessun risultato con i filtri correnti.</div>
           ) : (
             <div className="space-y-2">
-              {sorted.map((p: any) => {
+              {pagination.pageItems.map((p: any) => {
                 const docsOpen = openDocsPaymentId === p.id;
                 const isEditingThis = editingPaymentId === p.id;
 
@@ -1227,6 +1236,7 @@ function PaymentsContent() {
                   </div>
                 );
               })}
+              <ListPagination {...pagination} />
             </div>
           )}
         </div>
